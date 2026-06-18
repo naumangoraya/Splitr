@@ -1,0 +1,62 @@
+name: Build Android APK
+
+# Builds an installable APK on GitHub's free runners — no Android Studio needed.
+# Run it from the repo's "Actions" tab (Build Android APK -> Run workflow),
+# then download the "splitr-apk" artifact at the bottom of the run.
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   VITE_SUPABASE_URL        your Supabase project URL
+#   VITE_SUPABASE_ANON_KEY   your Supabase anon public key
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Build web app (bakes in Supabase keys)
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform & build tools
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Sync web assets into the Android project
+        run: npx cap sync android
+
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: splitr-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
