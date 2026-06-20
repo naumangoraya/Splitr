@@ -5,6 +5,10 @@ import path from 'path';
 
 export default defineConfig({
   resolve: { alias: { '@': path.resolve(__dirname, './src') } },
+  // Transpile down so the bundle runs on older / un-updated Android WebViews
+  // (low-end phones). Without this, Vite emits very modern JS that an old
+  // System WebView can't parse → blank screen / crash on launch.
+  build: { target: ['es2018', 'chrome73'] },
   plugins: [
     react(),
     VitePWA({
