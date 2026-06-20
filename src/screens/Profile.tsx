@@ -3,6 +3,7 @@ import { useAuth } from '@/context/AuthProvider';
 import { db } from '@/data/db';
 import { AppShell, Header } from '@/components/layout/AppShell';
 import { Avatar, Button, Input } from '@/components/ui';
+import { PoweredByEidosyne } from '@/components/layout/EidosyneLogo';
 import { LogOut, Check } from 'lucide-react';
 
 const CURRENCIES = ['PKR', 'USD', 'GBP', 'EUR', 'AED', 'SAR', 'INR'];
@@ -73,6 +74,8 @@ export default function Profile() {
         <Button variant="ghost" full className="mt-6 text-owe" onClick={signOut}>
           <LogOut className="h-4 w-4" /> Sign out
         </Button>
+
+        <PoweredByEidosyne className="mt-8" />
       </div>
     </AppShell>
   );

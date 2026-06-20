@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthProvider';
 import { Button, Input } from '@/components/ui';
+import { EidosyneWordmark } from '@/components/layout/EidosyneLogo';
 import { Split, Eye, EyeOff } from 'lucide-react';
 
 export default function Auth() {
@@ -36,14 +37,19 @@ export default function Auth() {
     (mode === 'in' || (Boolean(name) && Boolean(confirm)));
 
   return (
-    <div className="min-h-screen bg-[#0f1020]">
-      <div className="mx-auto flex min-h-screen max-w-[480px] flex-col justify-center bg-gradient-to-b from-[#1a1b35] to-[#0f1020] px-6 text-white">
-        <div className="mb-8 flex flex-col items-center text-center">
-          <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand shadow-card">
-            <Split className="h-8 w-8" />
+    <div className="min-h-screen bg-eidosyne-ink">
+      <div className="mx-auto flex min-h-screen max-w-[480px] flex-col justify-center bg-gradient-to-b from-[#15171c] to-eidosyne-ink px-6 text-white">
+        {/* Eidosyne company branding */}
+        <div className="mb-8 flex justify-center">
+          <EidosyneWordmark tagline />
+        </div>
+
+        <div className="mb-7 flex flex-col items-center text-center">
+          <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-brand shadow-card">
+            <Split className="h-7 w-7" />
           </div>
-          <h1 className="font-display text-[30px] font-bold">Splitr</h1>
-          <p className="mt-1 text-[15px] text-white/60">Split bills. Settle up. Stay friends.</p>
+          <h1 className="font-display text-[26px] font-bold">Splitr</h1>
+          <p className="mt-1 text-[14px] text-white/55">Split bills. Settle up. Stay friends.</p>
         </div>
 
         <div className="rounded-2xl bg-canvas p-5 text-ink shadow-card">

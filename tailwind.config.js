@@ -8,6 +8,9 @@ export default {
         brand: { DEFAULT: '#4338ca', light: '#6366f1', dark: '#3730a3', wash: '#eef0ff' },
         owed: { DEFAULT: '#0f9d6e', wash: '#e7f7f0' },   // they owe you (positive)
         owe:  { DEFAULT: '#e11d48', wash: '#fdecf0' },    // you owe (negative)
+        // Eidosyne brand identity (logo / splash only — NOT used for UI buttons,
+        // which stay indigo, so it never clashes with the green "owed" money color)
+        eidosyne: { DEFAULT: '#22c55e', ink: '#0c0d10' },
         canvas: '#f7f6f2',
         card: '#ffffff',
         line: '#ecebe6'

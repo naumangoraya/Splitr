@@ -1,8 +1,8 @@
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthProvider';
-import { AppShell } from '@/components/layout/AppShell';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { AddFab } from '@/components/layout/AddFab';
+import { EidosyneWordmark } from '@/components/layout/EidosyneLogo';
 import { Spinner } from '@/components/ui';
 import Auth from '@/screens/Auth';
 import Dashboard from '@/screens/Dashboard';
@@ -19,10 +19,12 @@ export default function App() {
   const location = useLocation();
 
   if (loading) {
+    // Branded splash while auth/session resolves
     return (
-      <AppShell>
-        <Spinner label="Loading Splitr…" />
-      </AppShell>
+      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-eidosyne-ink">
+        <EidosyneWordmark tagline />
+        <Spinner />
+      </div>
     );
   }
 

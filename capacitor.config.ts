@@ -4,11 +4,11 @@ const config: CapacitorConfig = {
   appId: 'com.splitr.app',
   appName: 'Splitr',
   webDir: 'dist',
-  backgroundColor: '#0f1020',
+  backgroundColor: '#0c0d10', // Eidosyne dark
   plugins: {
     SplashScreen: {
-      launchShowDuration: 800,
-      backgroundColor: '#0f1020',
+      launchShowDuration: 900,
+      backgroundColor: '#0c0d10', // Eidosyne dark
       androidSplashResourceName: 'splash',
       showSpinner: false
     },
