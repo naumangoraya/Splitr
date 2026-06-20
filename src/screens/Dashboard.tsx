@@ -16,7 +16,7 @@ export default function Dashboard() {
     const [groups, friends, activity] = await Promise.all([
       db.listGroups(me.id),
       db.listFriendDirectGroups(me.id),
-      db.listActivity(me.id)
+      db.listActivityDetailed(me.id)
     ]);
     return { groups, friends, activity };
   }, [me.id]);
@@ -68,19 +68,49 @@ export default function Dashboard() {
             </div>
           )}
 
-          <h2 className="mb-2 mt-6 font-display text-[15px] font-semibold text-ink-soft">Recent activity</h2>
+          <div className="mb-2 mt-6 flex items-center justify-between">
+            <h2 className="font-display text-[15px] font-semibold text-ink-soft">Recent activity</h2>
+            <button onClick={() => nav('/activity')} className="tap text-[13px] font-medium text-brand">See all</button>
+          </div>
           {data!.activity.length === 0 ? (
             <p className="px-1 text-[14px] text-ink-muted">Nothing yet.</p>
           ) : (
             <div className="space-y-2">
-              {data!.activity.slice(0, 8).map((a) => (
-                <div key={a.id} className="rounded-xl bg-card px-4 py-3 text-[14px] text-ink-soft shadow-card">
-                  {a.type === 'expense_added' && <>New expense · <b>{String(a.metadata.description ?? 'Expense')}</b> · {fromCents(Number(a.metadata.amount_cents ?? 0), me.preferred_currency)}</>}
-                  {a.type === 'settlement' && <>Payment of {fromCents(Number(a.metadata.amount_cents ?? 0), me.preferred_currency)} recorded</>}
-                  {!['expense_added', 'settlement'].includes(a.type) && <>{a.type.replace(/_/g, ' ')}</>}
-                  <span className="ml-1 text-ink-muted">· {new Date(a.created_at).toLocaleDateString()}</span>
-                </div>
-              ))}
+              {data!.activity.slice(0, 8).map((a) => {
+                const isExpense = a.type === 'expense_added';
+                const isSettlement = a.type === 'settlement';
+                const iActed = a.actorId === me.id;
+                const iPaid = a.paidById === me.id;
+                const myShare = a.participants.find((p) => p.userId === me.id)?.owedCents ?? 0;
+                const myDelta = isExpense ? (iPaid ? a.amountCents - myShare : -myShare) : 0;
+                return (
+                  <div key={a.id} className="flex items-center gap-2 rounded-xl bg-card px-4 py-3 text-[14px] text-ink-soft shadow-card">
+                    <div className="min-w-0 flex-1">
+                      {isExpense && <b className="text-ink">{a.description || 'Expense'}</b>}
+                      {isSettlement && <>Payment recorded</>}
+                      {!isExpense && !isSettlement && <>{a.type.replace(/_/g, ' ')}</>}
+                      <p className="text-[12px] text-ink-muted">
+                        {isExpense && a.amountCents > 0 && <>Total {fromCents(a.amountCents, me.preferred_currency)} · </>}
+                        {a.groupLabel} · {new Date(a.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    {isExpense && myDelta !== 0 && (
+                      <div className="flex-none text-right">
+                        <p className={`tabular text-[14px] font-semibold ${myDelta > 0 ? 'text-owed' : 'text-owe'}`}>
+                          {myDelta > 0 ? '+' : '-'}{fromCents(Math.abs(myDelta), me.preferred_currency)}
+                        </p>
+                        <p className="text-[11px] text-ink-muted">{myDelta > 0 ? 'you get back' : 'you owe'}</p>
+                      </div>
+                    )}
+                    {isSettlement && a.amountCents > 0 && (
+                      // settlement actor is the payer (money LEFT them) → red; receiver → green
+                      <span className={`tabular flex-none text-[14px] font-semibold ${iActed ? 'text-owe' : 'text-owed'}`}>
+                        {iActed ? '-' : '+'}{fromCents(a.amountCents, me.preferred_currency)}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

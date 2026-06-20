@@ -1,10 +1,11 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutGrid, Users, UserRound, CircleUser } from 'lucide-react';
+import { LayoutGrid, Users, UserRound, Activity as ActivityIcon, CircleUser } from 'lucide-react';
 
 const tabs = [
   { to: '/', label: 'Home', Icon: LayoutGrid, end: true },
   { to: '/groups', label: 'Groups', Icon: Users, end: false },
   { to: '/friends', label: 'Friends', Icon: UserRound, end: false },
+  { to: '/activity', label: 'Activity', Icon: ActivityIcon, end: false },
   { to: '/profile', label: 'Profile', Icon: CircleUser, end: false }
 ];
 

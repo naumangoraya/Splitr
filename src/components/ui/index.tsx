@@ -62,10 +62,6 @@ export function Input({ label, hint, error, className = '', ...rest }: InputProp
   );
 }
 
-export function Badge({ children, tone = 'neutral' }: { children: ReactNode; tone?: 'neutral' | 'owed' | 'owe' }) {
-  const t = { neutral: 'bg-brand-wash text-brand', owed: 'bg-owed-wash text-owed', owe: 'bg-owe-wash text-owe' }[tone];
-  return <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11.5px] font-semibold ${t}`}>{children}</span>;
-}
 
 export function Spinner({ label }: { label?: string }) {
   return (

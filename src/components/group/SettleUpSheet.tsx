@@ -33,24 +33,36 @@ export function SettleUpSheet({
   const cents = toCents(amount) ?? 0;
   const valid = from && to && from !== to && cents > 0;
 
+  const payload = () => ({
+    group_id: groupId, from_user: from, to_user: to,
+    amount_cents: cents, currency, note: null, created_by: meId
+  });
+
   async function record() {
     if (!valid || busy) return; // idempotency: ignore double taps
     setBusy(true);
     setError(null);
     try {
-      await db.addSettlement({
-        group_id: groupId,
-        from_user: from,
-        to_user: to,
-        amount_cents: cents,
-        currency,
-        note: null,
-        created_by: meId
-      });
+      await db.addSettlement(payload());
       onDone();
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not record the payment');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function request() {
+    if (!valid || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await db.requestSettlement(payload());
+      onDone();
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not send the request');
     } finally {
       setBusy(false);
     }
@@ -70,7 +82,14 @@ export function SettleUpSheet({
           </p>
         )}
         {error && <p className="text-[13px] text-owe">{error}</p>}
-        <Button full onClick={record} disabled={!valid || busy}>{busy ? 'Recording…' : 'Record payment'}</Button>
+        {/* Primary: request — stays amber until the person who is owed confirms receipt. */}
+        <Button full onClick={request} disabled={!valid || busy}>{busy ? 'Sending…' : 'Request settle-up'}</Button>
+        <Button full variant="soft" onClick={record} disabled={!valid || busy}>
+          {busy ? 'Recording…' : 'Record as already confirmed'}
+        </Button>
+        <p className="text-[12px] text-ink-muted">
+          “Request settle-up” marks it pending (amber) until {to ? name(to) : 'the person owed'} confirms they got the money. “Record as already confirmed” settles it immediately — use it if you’re the one who received the payment.
+        </p>
       </div>
     </Sheet>
   );

@@ -55,11 +55,13 @@ function eq(total: number, ids: string[]): Expense['splits'] {
     user_id: id,
     amount_owed_cents: base + (i < rem ? 1 : 0),
     shares: null,
-    percentage: null
+    percentage: null,
+    settled_at: null,
+    disputed_at: null
   }));
 }
 
-export const demoExpenses: Expense[] = [
+export const demoExpenses: Expense[] = ([
   {
     id: 'e-1', group_id: 'g-flat', paid_by: 'u-ayesha', created_by: 'u-ayesha',
     amount_cents: 4500000, currency: 'PKR', description: 'June rent', category: 'rent',
@@ -101,12 +103,16 @@ export const demoExpenses: Expense[] = [
     split_type: 'EQUAL', expense_date: '2026-05-21', receipt_url: null,
     created_at: '2026-05-21T15:00:00Z', splits: eq(350000, ['u-ayesha', 'u-bilal'])
   }
-];
+] as Omit<Expense, 'settled_at' | 'disputed_at' | 'payments'>[]).map((e) => ({
+  ...e, settled_at: null, disputed_at: null,
+  payments: [{ user_id: e.paid_by, amount_cents: e.amount_cents }]
+}));
 
 export const demoSettlements: Settlement[] = [
   {
     id: 's-1', group_id: 'g-flat', from_user: 'u-hira', to_user: 'u-ayesha',
-    amount_cents: 500000, currency: 'PKR', note: 'partial', created_at: '2026-06-12T10:00:00Z'
+    amount_cents: 500000, currency: 'PKR', note: 'partial', status: 'confirmed',
+    created_at: '2026-06-12T10:00:00Z'
   }
 ];
 

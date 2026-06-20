@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '@/context/AuthProvider';
 import { Button, Input } from '@/components/ui';
-import { Split } from 'lucide-react';
+import { Split, Eye, EyeOff } from 'lucide-react';
 
 export default function Auth() {
   const { signIn, signUp, exploreDemo, configured } = useAuth();
@@ -9,16 +9,31 @@ export default function Auth() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function submit() {
     setError(null);
+    if (mode === 'up') {
+      if (password.length < 6) {
+        setError('Password must be at least 6 characters.');
+        return;
+      }
+      if (password !== confirm) {
+        setError('Passwords do not match.');
+        return;
+      }
+    }
     setBusy(true);
     const err = mode === 'in' ? await signIn(email, password) : await signUp(name, email, password);
     setBusy(false);
     if (err) setError(err);
   }
+
+  const canSubmit = !busy && Boolean(email) && Boolean(password) &&
+    (mode === 'in' || (Boolean(name) && Boolean(confirm)));
 
   return (
     <div className="min-h-screen bg-[#0f1020]">
@@ -36,7 +51,7 @@ export default function Auth() {
             {(['in', 'up'] as const).map((m) => (
               <button
                 key={m}
-                onClick={() => { setMode(m); setError(null); }}
+                onClick={() => { setMode(m); setError(null); setConfirm(''); }}
                 className={`tap h-9 rounded-lg text-[14px] font-semibold ${
                   mode === m ? 'bg-card text-ink shadow-sm' : 'text-ink-muted'
                 }`}
@@ -51,9 +66,25 @@ export default function Auth() {
               <Input label="Name" placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)} />
             )}
             <Input label="Email" type="email" placeholder="you@email.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <Input label="Password" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
+
+            <div className="relative">
+              <Input label="Password" type={showPassword ? 'text' : 'password'} placeholder="••••••••"
+                className="pr-11" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <button type="button" onClick={() => setShowPassword((s) => !s)}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                className="tap absolute right-1 top-[26px] flex h-10 w-10 items-center justify-center rounded-lg text-ink-muted">
+                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+              </button>
+            </div>
+
+            {mode === 'up' && (
+              <Input label="Confirm password" type={showPassword ? 'text' : 'password'} placeholder="••••••••"
+                value={confirm} onChange={(e) => setConfirm(e.target.value)}
+                error={confirm && confirm !== password ? 'Passwords do not match' : undefined} />
+            )}
+
             {error && <p className="text-[13px] text-owe">{error}</p>}
-            <Button full onClick={submit} disabled={busy || !email || !password || (mode === 'up' && !name)}>
+            <Button full onClick={submit} disabled={!canSubmit}>
               {busy ? 'Please wait…' : mode === 'in' ? 'Sign in' : 'Create account'}
             </Button>
           </div>

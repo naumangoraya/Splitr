@@ -55,12 +55,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp: AuthState['signUp'] = async (name, email, password) => {
     if (!supabase) return 'Backend not connected. Use “Explore demo” to look around.';
-    const { error } = await supabase.auth.signUp({
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: { data: { full_name: name } }
     });
-    return error ? error.message : null;
+    if (error) {
+      // Friendlier copy for the common free-tier email rate limit.
+      if (/rate limit|too many/i.test(error.message)) {
+        return 'Too many signups from this project right now. Wait a minute and try again, or ask the owner to turn off email confirmation.';
+      }
+      return error.message;
+    }
+    // If email confirmation is ON, Supabase returns a user with no active session.
+    // Tell the user instead of leaving them on a silent, logged-out screen.
+    if (data.user && !data.session) {
+      return 'Check your email to confirm your account, then sign in.';
+    }
+    return null;
   };
 
   const signOut = async () => {

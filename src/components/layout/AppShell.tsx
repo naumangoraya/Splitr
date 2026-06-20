@@ -13,7 +13,7 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
           </div>
         )}
         {header}
-        <main className="no-scrollbar flex-1 overflow-y-auto pb-24">{children}</main>
+        <main className="no-scrollbar flex-1 overflow-y-auto pb-28">{children}</main>
       </div>
     </div>
   );
@@ -21,7 +21,7 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
 
 export function Header({ title, right }: { title: string; right?: ReactNode }) {
   return (
-    <header className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-canvas/90 px-5 py-3.5 backdrop-blur">
+    <header className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-canvas/90 px-5 py-3.5 pt-[calc(0.875rem+env(safe-area-inset-top))] backdrop-blur">
       <h1 className="font-display text-[20px] font-bold text-ink">{title}</h1>
       {right}
     </header>

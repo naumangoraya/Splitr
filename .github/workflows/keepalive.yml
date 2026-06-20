@@ -2,7 +2,8 @@ name: Supabase keep-alive
 
 # Supabase free projects pause after 7 days of inactivity.
 # This pings a lightweight REST endpoint every 3 days to keep it warm.
-# Add repository secrets: SUPABASE_URL and SUPABASE_ANON_KEY.
+# Reuses the same repo secrets the APK build uses:
+#   VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.
 
 on:
   schedule:
@@ -14,9 +15,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Supabase REST
+        env:
+          URL: ${{ secrets.VITE_SUPABASE_URL }}
+          KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: |
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY repo secrets." >&2
+            exit 1
+          fi
           curl -fsS \
-            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-            -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}" \
-            "${{ secrets.SUPABASE_URL }}/rest/v1/profiles?select=id&limit=1" \
+            -H "apikey: $KEY" \
+            -H "Authorization: Bearer $KEY" \
+            "$URL/rest/v1/profiles?select=id&limit=1" \
             && echo "Supabase pinged."

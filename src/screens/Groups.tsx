@@ -16,18 +16,25 @@ export default function Groups() {
   const [name, setName] = useState('');
   const [desc, setDesc] = useState('');
   const [busy, setBusy] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const { data, loading, error, reload } = useAsync(() => db.listGroups(me.id), [me.id]);
 
   async function create() {
-    if (!name.trim()) return;
+    if (!name.trim() || busy) return;
     setBusy(true);
-    const id = await db.createGroup(me.id, name.trim(), desc.trim() || null, me.preferred_currency);
-    setBusy(false);
-    setOpen(false);
-    setName('');
-    setDesc('');
-    nav(`/group/${id}`);
+    setCreateError(null);
+    try {
+      const id = await db.createGroup(me.id, name.trim(), desc.trim() || null, me.preferred_currency);
+      setOpen(false);
+      setName('');
+      setDesc('');
+      nav(`/group/${id}`);
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Could not create the group');
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -64,10 +71,11 @@ export default function Groups() {
         </div>
       )}
 
-      <Sheet open={open} onClose={() => setOpen(false)} title="New group">
+      <Sheet open={open} onClose={() => { setOpen(false); setCreateError(null); }} title="New group">
         <div className="space-y-3">
           <Input label="Group name" placeholder="e.g. Apartment 4B" value={name} onChange={(e) => setName(e.target.value)} />
           <Input label="Description (optional)" placeholder="Rent, bills, groceries" value={desc} onChange={(e) => setDesc(e.target.value)} />
+          {createError && <p className="text-[13px] text-owe">{createError}</p>}
           <Button full onClick={create} disabled={busy || !name.trim()}>{busy ? 'Creating…' : 'Create group'}</Button>
         </div>
       </Sheet>

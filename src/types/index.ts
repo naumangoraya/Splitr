@@ -35,6 +35,13 @@ export interface Split {
   amount_owed_cents: number;
   shares: number | null;
   percentage: number | null;
+  settled_at: string | null;   // this person's share has been settled
+  disputed_at: string | null;  // this person disputes their share
+}
+
+export interface Payment {
+  user_id: string;
+  amount_cents: number; // what this person contributed toward the bill
 }
 
 export interface Expense {
@@ -49,9 +56,16 @@ export interface Expense {
   split_type: SplitType;
   expense_date: string;
   receipt_url: string | null;
+  settled_at: string | null;
+  disputed_at: string | null;
   created_at: string;
   splits: Split[];
+  // who actually paid, and how much each contributed. For single-payer
+  // expenses this is one row equal to amount_cents (paid_by is the primary).
+  payments: Payment[];
 }
+
+export type SettlementStatus = 'pending' | 'confirmed' | 'disputed';
 
 export interface Settlement {
   id: string;
@@ -61,6 +75,8 @@ export interface Settlement {
   amount_cents: number;
   currency: string;
   note: string | null;
+  status: SettlementStatus;
+  created_by?: string | null;
   created_at: string;
 }
 

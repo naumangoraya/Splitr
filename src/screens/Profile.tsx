@@ -14,14 +14,22 @@ export default function Profile() {
   const [currency, setCurrency] = useState(me.preferred_currency);
   const [saved, setSaved] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function save() {
+    if (busy) return;
     setBusy(true);
-    await db.updateProfile(me.id, { full_name: name.trim(), preferred_currency: currency });
-    await refresh();
-    setBusy(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
+    setError(null);
+    try {
+      await db.updateProfile(me.id, { full_name: name.trim(), preferred_currency: currency });
+      await refresh();
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not save your profile');
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -50,6 +58,7 @@ export default function Profile() {
               ))}
             </div>
           </div>
+          {error && <p className="text-[13px] text-owe">{error}</p>}
           <Button full onClick={save} disabled={busy}>
             {saved ? <><Check className="h-4 w-4" /> Saved</> : busy ? 'Saving…' : 'Save changes'}
           </Button>
