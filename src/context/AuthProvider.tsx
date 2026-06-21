@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { supabase, isConfigured } from '@/lib/supabase';
 import { db } from '@/data/db';
 import { DEMO_ME_ID } from '@/data/demoData';
+import { unregisterPushToken } from '@/hooks/usePush';
 import type { Profile } from '@/types';
 
 interface AuthState {
@@ -76,6 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    await unregisterPushToken();           // stop this device receiving the user's push
     if (supabase) await supabase.auth.signOut();
     setUser(null);
   };

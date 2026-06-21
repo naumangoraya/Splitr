@@ -1,5 +1,7 @@
-import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
+import { useCallback } from 'react';
+import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthProvider';
+import { usePush } from '@/hooks/usePush';
 import { BottomNav } from '@/components/layout/BottomNav';
 import { AddFab } from '@/components/layout/AddFab';
 import { EidosyneWordmark } from '@/components/layout/EidosyneLogo';
@@ -18,6 +20,11 @@ import Profile from '@/screens/Profile';
 export default function App() {
   const { user, loading } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
+
+  // register for background push when logged in; tapping a push opens the group
+  const openGroup = useCallback((groupId: string) => navigate(`/group/${groupId}`), [navigate]);
+  usePush(user?.id, openGroup);
 
   if (loading) {
     // Branded splash while auth/session resolves

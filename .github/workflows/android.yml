@@ -7,6 +7,10 @@ name: Build Android APK
 # Required repository secrets (Settings -> Secrets and variables -> Actions):
 #   VITE_SUPABASE_URL        your Supabase project URL
 #   VITE_SUPABASE_ANON_KEY   your Supabase anon public key
+# Optional (only for FCM background push):
+#   GOOGLE_SERVICES_JSON     base64 of android/app/google-services.json
+#                            (run: base64 -w0 google-services.json) — without it
+#                            the app still builds, just no background push.
 
 on:
   workflow_dispatch:
@@ -44,6 +48,10 @@ jobs:
 
       - name: Install Android platform & build tools
         run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Add google-services.json (only if the secret is set → enables FCM push)
+        if: ${{ secrets.GOOGLE_SERVICES_JSON != '' }}
+        run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > android/app/google-services.json
 
       - name: Sync web assets into the Android project
         run: npx cap sync android

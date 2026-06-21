@@ -118,6 +118,14 @@ create table if not exists messages (
   created_at timestamptz not null default now()
 );
 
+-- FCM device tokens for background push (one row per device per user)
+create table if not exists device_tokens (
+  token text primary key,
+  user_id uuid not null references profiles(id) on delete cascade,
+  platform text not null default 'android',
+  updated_at timestamptz not null default now()
+);
+
 -- in-app notifications (realtime). One row per recipient.
 create table if not exists notifications (
   id uuid primary key default gen_random_uuid(),
@@ -388,6 +396,7 @@ alter table activity        enable row level security;
 alter table invitations     enable row level security;
 alter table messages        enable row level security;
 alter table notifications   enable row level security;
+alter table device_tokens   enable row level security;
 
 -- profiles: readable by anyone signed in (needed to render names/avatars of co-members), writable only by self
 drop policy if exists profiles_read on profiles;
@@ -502,6 +511,12 @@ create policy notifications_insert on notifications for insert to authenticated
     and is_group_member(group_id, auth.uid())
     and is_group_member(group_id, user_id)
   );
+
+-- device_tokens: a user manages only their own tokens. The push Edge Function
+-- reads them via the service role (which bypasses RLS).
+drop policy if exists device_tokens_rw on device_tokens;
+create policy device_tokens_rw on device_tokens for all to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 -- ============================================================
 -- REALTIME (so chat + notifications update live)

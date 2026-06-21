@@ -23,3 +23,7 @@ CLAUDE.local.md
 
 # Local-only Supabase helper scripts (not part of the schema)
 supabase/_*.sql
+
+# Firebase config (injected via CI secret / added locally)
+google-services.json
+android/app/google-services.json
