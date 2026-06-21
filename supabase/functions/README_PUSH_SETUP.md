@@ -16,14 +16,18 @@ without them (you keep in-app + local notifications).
 ## 3. FCM service-account key
 - Firebase → Project settings → Service accounts → Generate new private key (JSON)
 
-## 4. Deploy the Edge Function + secrets
+## 4. Deploy the Edge Function + secret
 ```
-npm i -g supabase && supabase login
-supabase link --project-ref <your-project-ref>
-supabase functions deploy push-on-notification
-supabase secrets set FCM_SERVICE_ACCOUNT='<whole service-account json>'
-supabase secrets set SUPABASE_SERVICE_ROLE_KEY='<service_role key from Settings→API>'
+npx supabase login
+npx supabase link --project-ref <your-project-ref>
+npx supabase functions deploy push-on-notification
 ```
+Then set ONE secret in the Dashboard (Edge Functions → Secrets):
+- `FCM_SERVICE_ACCOUNT` = the whole Firebase service-account JSON.
+
+Do NOT set SUPABASE_SERVICE_ROLE_KEY / SUPABASE_URL — Supabase auto-provides
+those to every Edge Function (and the dashboard blocks the SUPABASE_ prefix).
+The "Docker is not running" warning during deploy is harmless.
 
 ## 5. SQL migrations (SQL Editor)
 - `migration_2026-06-21_chat_notifications.sql` (if not already run)
