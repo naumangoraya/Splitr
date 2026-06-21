@@ -1,11 +1,12 @@
 import { supabase, isConfigured } from '@/lib/supabase';
-import type { Profile, Group, Member, Expense, Settlement, Comment, Activity, SplitType } from '@/types';
+import type { Profile, Group, Member, Expense, Settlement, Comment, Activity, SplitType, Message, ChatMessage, AppNotification } from '@/types';
 import { pairwiseEdges, pairwiseNetBetween, expenseNet } from '@/lib/balances';
 import * as seed from './demoData';
 
 export interface NewExpense {
   group_id: string;
   paid_by: string;
+  actor_id?: string;   // who created the expense (may differ from paid_by); defaults to paid_by
   amount_cents: number;
   currency: string;
   description: string;
@@ -116,6 +117,16 @@ export interface Db {
   listActivityDetailed(meId: string): Promise<ActivityItem[]>;
   inviteToGroup(groupId: string, email: string, invitedBy: string): Promise<InviteResult>;
   addFriendByEmail(meId: string, email: string): Promise<string>;
+  // membership management
+  leaveGroup(meId: string, groupId: string): Promise<void>;
+  deleteGroup(meId: string, groupId: string): Promise<void>;       // owner only
+  removeMember(meId: string, groupId: string, userId: string): Promise<void>; // owner only
+  // chat
+  listMessages(groupId: string): Promise<ChatMessage[]>;
+  sendMessage(meId: string, groupId: string, body: string, expenseId?: string | null): Promise<void>;
+  // notifications
+  listNotifications(meId: string): Promise<AppNotification[]>;
+  markNotificationsRead(meId: string): Promise<void>;
 }
 
 // 'added' = the person already had an account and is now a member.
@@ -133,7 +144,9 @@ const mem = {
   expenses: clone(seed.demoExpenses) as Expense[],
   settlements: clone(seed.demoSettlements) as Settlement[],
   comments: clone(seed.demoComments) as Comment[],
-  activity: clone(seed.demoActivity) as Activity[]
+  activity: clone(seed.demoActivity) as Activity[],
+  messages: [] as Message[],
+  notifications: [] as AppNotification[]
 };
 
 const uid = () => 'x-' + Math.random().toString(36).slice(2, 10);
@@ -281,8 +294,9 @@ const demoDb: Db = {
   },
   async addExpense(e) {
     const id = uid();
+    const actor = e.actor_id ?? e.paid_by;
     mem.expenses.push({
-      id, group_id: e.group_id, paid_by: e.paid_by, created_by: e.paid_by,
+      id, group_id: e.group_id, paid_by: e.paid_by, created_by: actor,
       amount_cents: e.amount_cents, currency: e.currency, description: e.description,
       category: e.category, split_type: e.split_type, expense_date: e.expense_date,
       receipt_url: e.receipt_url ?? null, settled_at: null, disputed_at: null, created_at: new Date().toISOString(),
@@ -296,10 +310,21 @@ const demoDb: Db = {
         : [{ user_id: e.paid_by, amount_cents: e.amount_cents }]
     });
     mem.activity.unshift({
-      id: uid(), group_id: e.group_id, actor_id: e.paid_by, type: 'expense_added',
+      id: uid(), group_id: e.group_id, actor_id: actor, type: 'expense_added',
       entity_id: id, metadata: { description: e.description, amount_cents: e.amount_cents },
       created_at: new Date().toISOString()
     });
+    // notify everyone involved except whoever logged it
+    const involved = new Set<string>([...e.splits.map((s) => s.user_id), ...(e.payments ?? []).map((p) => p.user_id)]);
+    involved.delete(actor);
+    for (const uid2 of involved) {
+      mem.notifications.unshift({
+        id: uid(), user_id: uid2, actor_id: actor, type: 'expense_added',
+        group_id: e.group_id, expense_id: id, read_at: null,
+        body: `New expense "${e.description}" · ${e.currency} ${Math.round(e.amount_cents / 100)}`,
+        created_at: new Date().toISOString()
+      });
+    }
   },
   async addPersonalSplit(meId, p) {
     for (const share of p.shares) {
@@ -433,6 +458,53 @@ const demoDb: Db = {
     });
     mem.members[id] = [meId, friend.id];
     return id;
+  },
+  async leaveGroup(meId, groupId) {
+    mem.members[groupId] = (mem.members[groupId] ?? []).filter((u) => u !== meId);
+  },
+  async deleteGroup(meId, groupId) {
+    const g = mem.groups.find((x) => x.id === groupId);
+    if (!g) return;
+    if (g.created_by !== meId) throw new Error('Only the group owner can delete this group.');
+    mem.groups = mem.groups.filter((x) => x.id !== groupId);
+    delete mem.members[groupId];
+    mem.expenses = mem.expenses.filter((e) => e.group_id !== groupId);
+    mem.settlements = mem.settlements.filter((s) => s.group_id !== groupId);
+    mem.messages = mem.messages.filter((m) => m.group_id !== groupId);
+  },
+  async removeMember(meId, groupId, userId) {
+    const g = mem.groups.find((x) => x.id === groupId);
+    if (!g || g.created_by !== meId) throw new Error('Only the group owner can remove members.');
+    if (userId === meId) throw new Error('Use “Leave group” to remove yourself.');
+    mem.members[groupId] = (mem.members[groupId] ?? []).filter((u) => u !== userId);
+  },
+  async listMessages(groupId) {
+    return mem.messages
+      .filter((m) => m.group_id === groupId)
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((m) => {
+        const exp = m.expense_id ? mem.expenses.find((e) => e.id === m.expense_id) : null;
+        return {
+          ...m,
+          senderName: profileById(m.user_id)?.full_name ?? '—',
+          mention: exp ? { id: exp.id, description: exp.description, amountCents: exp.amount_cents, currency: exp.currency } : null
+        } as ChatMessage;
+      });
+  },
+  async sendMessage(meId, groupId, body, expenseId) {
+    mem.messages.push({
+      id: uid(), group_id: groupId, user_id: meId, body,
+      expense_id: expenseId ?? null, created_at: new Date().toISOString()
+    });
+  },
+  async listNotifications(meId) {
+    return mem.notifications
+      .filter((n) => n.user_id === meId)
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  },
+  async markNotificationsRead(meId) {
+    const now = new Date().toISOString();
+    for (const n of mem.notifications) if (n.user_id === meId && !n.read_at) n.read_at = now;
   }
 };
 
@@ -593,8 +665,9 @@ const supaDb: Db = {
   },
   async addExpense(e) {
     const client = sb();
+    const actor = e.actor_id ?? e.paid_by; // who is logging this expense
     const { data, error } = await client.from('expenses').insert({
-      group_id: e.group_id, paid_by: e.paid_by, created_by: e.paid_by,
+      group_id: e.group_id, paid_by: e.paid_by, created_by: actor,
       amount_cents: e.amount_cents, currency: e.currency, description: e.description,
       category: e.category, split_type: e.split_type, expense_date: e.expense_date,
       receipt_url: e.receipt_url ?? null
@@ -621,11 +694,21 @@ const supaDb: Db = {
       await client.from('expenses').delete().eq('id', expenseId); // roll back the orphan
       throw err;
     }
-    // activity is best-effort; a failure here must not orphan the expense
+    // activity + notifications are best-effort; a failure here must not orphan the expense
     await client.from('activity').insert({
-      group_id: e.group_id, actor_id: e.paid_by, type: 'expense_added',
+      group_id: e.group_id, actor_id: actor, type: 'expense_added',
       entity_id: expenseId, metadata: { description: e.description, amount_cents: e.amount_cents }
     });
+    // notify everyone involved (split users + payers) except whoever logged it
+    const involved = new Set<string>([...e.splits.map((s) => s.user_id), ...(e.payments ?? []).map((p) => p.user_id)]);
+    involved.delete(actor);
+    if (involved.size > 0) {
+      await client.from('notifications').insert([...involved].map((uid2) => ({
+        user_id: uid2, actor_id: actor, type: 'expense_added',
+        group_id: e.group_id, expense_id: expenseId,
+        body: `New expense "${e.description}" · ${e.currency} ${Math.round(e.amount_cents / 100)}`
+      }))).then(() => {}, () => {}); // ignore notification failures
+    }
   },
   async addPersonalSplit(meId, p) {
     for (const share of p.shares) {
@@ -680,12 +763,18 @@ const supaDb: Db = {
     });
   },
   async requestSettlement(s) {
-    const { error } = await sb().from('settlements').insert({
+    const client = sb();
+    const { error } = await client.from('settlements').insert({
       group_id: s.group_id, from_user: s.from_user, to_user: s.to_user,
       amount_cents: s.amount_cents, currency: s.currency, note: s.note,
       created_by: s.created_by, status: 'pending'
     });
     if (error) throw error;
+    // notify the person who must confirm (the creditor / to_user)
+    await client.from('notifications').insert({
+      user_id: s.to_user, actor_id: s.from_user, type: 'settlement', group_id: s.group_id,
+      body: `Settle-up request · ${s.currency} ${Math.round(s.amount_cents / 100)} — confirm if received`
+    }).then(() => {}, () => {});
   },
   async confirmSettlement(id) {
     const client = sb();
@@ -697,6 +786,11 @@ const supaDb: Db = {
       group_id: s.group_id, actor_id: s.from_user, type: 'settlement',
       entity_id: s.id, metadata: { amount_cents: Number(s.amount_cents), to_user: s.to_user }
     });
+    // notify the payer that their settle-up was confirmed
+    await client.from('notifications').insert({
+      user_id: s.from_user, actor_id: s.to_user, type: 'settlement', group_id: s.group_id,
+      body: `Your settle-up of ${s.currency} ${Math.round(Number(s.amount_cents) / 100)} was confirmed`
+    }).then(() => {}, () => {});
   },
   async disputeSettlement(id) {
     const { error } = await sb().from('settlements').update({ status: 'disputed' }).eq('id', id);
@@ -808,6 +902,62 @@ const supaDb: Db = {
     const { data, error } = await sb().rpc('add_friend_by_email', { p_email: email.trim().toLowerCase() });
     if (error) throw error;
     return data as string; // the direct group's id
+  },
+  async leaveGroup(meId, groupId) {
+    const { error } = await sb().from('group_members').delete()
+      .eq('group_id', groupId).eq('user_id', meId);
+    if (error) throw error;
+  },
+  async deleteGroup(_meId, groupId) {
+    // RLS groups_delete restricts this to the creator/owner.
+    const { error } = await sb().from('groups').delete().eq('id', groupId);
+    if (error) throw error;
+  },
+  async removeMember(_meId, groupId, userId) {
+    // RLS gm_delete allows the owner to remove others.
+    const { error } = await sb().from('group_members').delete()
+      .eq('group_id', groupId).eq('user_id', userId);
+    if (error) throw error;
+  },
+  async listMessages(groupId) {
+    const client = sb();
+    const { data, error } = await client.from('messages')
+      .select('*').eq('group_id', groupId).order('created_at', { ascending: true }).limit(500);
+    if (error) throw error;
+    const rows = (data ?? []) as Message[];
+    const userIds = [...new Set(rows.map((m) => m.user_id))];
+    const expenseIds = [...new Set(rows.map((m) => m.expense_id).filter(Boolean))] as string[];
+    const [{ data: ps }, { data: exps }] = await Promise.all([
+      userIds.length ? client.from('profiles').select('id, full_name').in('id', userIds) : Promise.resolve({ data: [] as any[] }),
+      expenseIds.length ? client.from('expenses').select('id, description, amount_cents, currency').in('id', expenseIds) : Promise.resolve({ data: [] as any[] })
+    ]);
+    const nameMap = new Map((ps ?? []).map((p: any) => [p.id, p.full_name as string]));
+    const expMap = new Map((exps ?? []).map((e: any) => [e.id, e]));
+    return rows.map((m) => {
+      const e = m.expense_id ? expMap.get(m.expense_id) : null;
+      return {
+        ...m,
+        senderName: nameMap.get(m.user_id) ?? '—',
+        mention: e ? { id: e.id, description: e.description, amountCents: Number(e.amount_cents), currency: e.currency } : null
+      } as ChatMessage;
+    });
+  },
+  async sendMessage(meId, groupId, body, expenseId) {
+    const { error } = await sb().from('messages').insert({
+      group_id: groupId, user_id: meId, body, expense_id: expenseId ?? null
+    });
+    if (error) throw error;
+  },
+  async listNotifications(meId) {
+    const { data, error } = await sb().from('notifications')
+      .select('*').eq('user_id', meId).order('created_at', { ascending: false }).limit(50);
+    if (error) throw error;
+    return (data ?? []) as AppNotification[];
+  },
+  async markNotificationsRead(meId) {
+    const { error } = await sb().from('notifications')
+      .update({ read_at: new Date().toISOString() }).eq('user_id', meId).is('read_at', null);
+    if (error) throw error;
   }
 } as Db;
 

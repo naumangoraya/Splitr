@@ -1,16 +1,20 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthProvider';
 import { useAsync } from '@/hooks/useAsync';
+import { useNotifications } from '@/hooks/useNotifications';
 import { db } from '@/data/db';
 import { AppShell, Header } from '@/components/layout/AppShell';
-import { Avatar, Spinner, ErrorState, EmptyState, Button } from '@/components/ui';
+import { Avatar, Spinner, ErrorState, EmptyState, Button, Sheet } from '@/components/ui';
 import { fromCents } from '@/lib/money';
-import { Plus, ChevronRight } from 'lucide-react';
+import { Plus, ChevronRight, Bell } from 'lucide-react';
 
 export default function Dashboard() {
   const { user } = useAuth();
   const nav = useNavigate();
   const me = user!;
+  const notif = useNotifications(me.id);
+  const [notifOpen, setNotifOpen] = useState(false);
 
   const { data, loading, error, reload } = useAsync(async () => {
     const [groups, friends, activity] = await Promise.all([
@@ -27,7 +31,18 @@ export default function Dashboard() {
 
   return (
     <AppShell header={<Header title={`Hi, ${me.full_name.split(' ')[0]}`} right={
-      <Button variant="soft" className="h-10 px-3" onClick={() => nav('/add')}><Plus className="h-4 w-4" /> Add</Button>
+      <div className="flex items-center gap-1.5">
+        <button onClick={() => { setNotifOpen(true); notif.markAllRead(); }} aria-label="Notifications"
+          className="tap relative flex h-10 w-10 items-center justify-center rounded-xl text-ink-soft">
+          <Bell className="h-[22px] w-[22px]" />
+          {notif.unread > 0 && (
+            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-owe px-1 text-[10px] font-bold text-white">
+              {notif.unread > 9 ? '9+' : notif.unread}
+            </span>
+          )}
+        </button>
+        <Button variant="soft" className="h-10 px-3" onClick={() => nav('/add')}><Plus className="h-4 w-4" /> Add</Button>
+      </div>
     } />}>
       {loading ? (
         <Spinner label="Loading your balances…" />
@@ -115,6 +130,26 @@ export default function Dashboard() {
           )}
         </div>
       )}
+
+      <Sheet open={notifOpen} onClose={() => setNotifOpen(false)} title="Notifications">
+        <div className="max-h-[60vh] space-y-2 overflow-y-auto">
+          {notif.items.length === 0 ? (
+            <p className="py-8 text-center text-[14px] text-ink-muted">No notifications yet.</p>
+          ) : notif.items.map((n) => (
+            <button key={n.id}
+              onClick={() => { setNotifOpen(false); if (n.group_id) nav(`/group/${n.group_id}`); }}
+              className="tap flex w-full items-start gap-3 rounded-xl bg-card px-3.5 py-3 text-left shadow-card">
+              <div className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-brand-wash text-brand">
+                <Bell className="h-4 w-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[13.5px] text-ink">{n.body}</p>
+                <p className="text-[11px] text-ink-muted">{new Date(n.created_at).toLocaleString()}</p>
+              </div>
+            </button>
+          ))}
+        </div>
+      </Sheet>
     </AppShell>
   );
 }

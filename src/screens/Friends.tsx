@@ -6,7 +6,7 @@ import { db } from '@/data/db';
 import { AppShell, Header } from '@/components/layout/AppShell';
 import { Avatar, Spinner, ErrorState, EmptyState, Button, Input, Sheet } from '@/components/ui';
 import { fromCents } from '@/lib/money';
-import { ChevronRight, ChevronDown, UserPlus, UserMinus } from 'lucide-react';
+import { ChevronRight, ChevronDown, UserPlus, UserMinus, MessageCircle } from 'lucide-react';
 
 export default function Friends() {
   const { user } = useAuth();
@@ -141,6 +141,10 @@ export default function Friends() {
                         {netCents === 0 ? '—' : fromCents(Math.abs(netCents), me.preferred_currency)}
                       </p>
                       <ChevronRight className="h-5 w-5 flex-none text-ink-muted" />
+                    </button>
+                    <button onClick={() => nav(`/group/${group.id}/chat`)} aria-label={`Chat with ${group.name}`}
+                      className="tap flex h-11 w-11 flex-none items-center justify-center rounded-xl text-ink-soft">
+                      <MessageCircle className="h-[18px] w-[18px]" />
                     </button>
                     <button onClick={() => removeFriend(group.id, group.name, netCents === 0)}
                       disabled={removingId === group.id} aria-label={`Remove ${group.name}`}

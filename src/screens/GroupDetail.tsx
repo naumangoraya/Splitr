@@ -9,7 +9,7 @@ import { computeBalances, pairwiseEdges, expenseNet } from '@/lib/balances';
 import { simplifyDebts, nettedPairwise } from '@/lib/debt';
 import { fromCents } from '@/lib/money';
 import { expensesToCsv, downloadCsv } from '@/lib/csv';
-import { ChevronLeft, ChevronRight, ChevronDown, Plus, Download, UserPlus, Trash2, CheckCircle2, AlertTriangle, RotateCcw } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ChevronDown, Plus, Download, UserPlus, Trash2, CheckCircle2, AlertTriangle, RotateCcw, MessageCircle, Users, LogOut } from 'lucide-react';
 
 export default function GroupDetail() {
   const { id } = useParams();
@@ -24,6 +24,8 @@ export default function GroupDetail() {
   const [inviteMsg, setInviteMsg] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
   const [expandedExp, setExpandedExp] = useState<string | null>(null);
+  const [membersOpen, setMembersOpen] = useState(false);
+  const [memberBusy, setMemberBusy] = useState<string | null>(null);
 
   const { data, loading, error, reload } = useAsync(() => db.getGroup(id!), [id]);
   const friends = useAsync(() => db.listFriends(me.id), [me.id]);
@@ -83,6 +85,35 @@ export default function GroupDetail() {
     catch (e) { setRowError(e instanceof Error ? e.message : 'Could not update that share'); }
   }
 
+  const iAmOwner = group.created_by === me.id;
+
+  async function removeMember(userId: string, name: string) {
+    const theirNet = balances.find((b) => b.userId === userId)?.netCents ?? 0;
+    if (theirNet !== 0) { setRowError(`${name} has an unsettled balance — settle up before removing them.`); return; }
+    if (!confirm(`Remove ${name} from this group?`)) return;
+    setMemberBusy(userId);
+    setRowError(null);
+    try { await db.removeMember(me.id, group.id, userId); reload(); }
+    catch (e) { setRowError(e instanceof Error ? e.message : 'Could not remove member'); }
+    finally { setMemberBusy(null); }
+  }
+
+  async function leaveGroup() {
+    if (iAmOwner) { setRowError('You created this group — delete it instead, or transfer it isn’t supported yet.'); setMembersOpen(false); return; }
+    if (myNetCents !== 0) { setRowError('Settle up before leaving — your balance isn’t zero.'); setMembersOpen(false); return; }
+    if (!confirm('Leave this group? You’ll stop seeing its expenses.')) return;
+    setMemberBusy(me.id);
+    try { await db.leaveGroup(me.id, group.id); nav('/groups'); }
+    catch (e) { setRowError(e instanceof Error ? e.message : 'Could not leave the group'); setMemberBusy(null); }
+  }
+
+  async function deleteGroup() {
+    if (!confirm('Delete this group for everyone? This removes all its expenses and chat. This cannot be undone.')) return;
+    setMemberBusy('__del__');
+    try { await db.deleteGroup(me.id, group.id); nav('/groups'); }
+    catch (e) { setRowError(e instanceof Error ? e.message : 'Could not delete the group'); setMemberBusy(null); }
+  }
+
   return (
     <AppShell
       header={
@@ -92,9 +123,8 @@ export default function GroupDetail() {
             <h1 className="truncate font-display text-[18px] font-bold text-ink">{group.name}</h1>
             <p className="text-[12px] text-ink-muted">{members.length} {members.length === 1 ? 'member' : 'members'}{group.simplify_debts ? ' · simplified' : ''}</p>
           </div>
-          {!group.is_direct && (
-            <button className="tap flex h-11 w-11 flex-none items-center justify-center rounded-xl" onClick={() => setInviteOpen(true)} aria-label="Invite to group"><UserPlus className="h-[22px] w-[22px] text-ink-soft" /></button>
-          )}
+          <button className="tap flex h-11 w-11 flex-none items-center justify-center rounded-xl" onClick={() => nav(`/group/${group.id}/chat`)} aria-label="Open chat"><MessageCircle className="h-[22px] w-[22px] text-ink-soft" /></button>
+          <button className="tap flex h-11 w-11 flex-none items-center justify-center rounded-xl" onClick={() => setMembersOpen(true)} aria-label="Members"><Users className="h-[22px] w-[22px] text-ink-soft" /></button>
           <button className="tap flex h-11 w-11 flex-none items-center justify-center rounded-xl" onClick={() => downloadCsv(`${group.name}.csv`, expensesToCsv(expenses, members))} aria-label="Export CSV">
             <Download className="h-[22px] w-[22px] text-ink-soft" />
           </button>
@@ -292,6 +322,43 @@ export default function GroupDetail() {
 
           {inviteError && <p className="text-[13px] text-owe">{inviteError}</p>}
           {inviteMsg && <p className="text-[13px] text-owed">{inviteMsg}</p>}
+        </div>
+      </Sheet>
+
+      {/* Members — roster, remove (owner), invite, leave / delete */}
+      <Sheet open={membersOpen} onClose={() => setMembersOpen(false)} title={`Members · ${members.length}`}>
+        <div className="max-h-[55vh] overflow-y-auto">
+          {members.map((m, i) => (
+            <div key={m.id} className={`flex items-center gap-3 py-2.5 ${i > 0 ? 'border-t border-line' : ''}`}>
+              <Avatar id={m.id} name={m.full_name} size={36} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[14px] font-medium text-ink">{m.id === me.id ? 'You' : m.full_name}</p>
+                <p className="text-[12px] text-ink-muted capitalize">{m.role}{m.id === group.created_by ? ' · creator' : ''}</p>
+              </div>
+              {iAmOwner && m.id !== me.id && (
+                <button onClick={() => removeMember(m.id, m.full_name)} disabled={memberBusy === m.id}
+                  className="tap rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-owe disabled:opacity-40">Remove</button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-4 space-y-2 border-t border-line pt-4">
+          {!group.is_direct && (
+            <Button full variant="soft" onClick={() => { setMembersOpen(false); setInviteOpen(true); }}>
+              <UserPlus className="h-4 w-4" /> Add people
+            </Button>
+          )}
+          {!group.is_direct && !iAmOwner && (
+            <Button full variant="ghost" className="text-owe" onClick={leaveGroup} disabled={memberBusy === me.id}>
+              <LogOut className="h-4 w-4" /> Leave group
+            </Button>
+          )}
+          {iAmOwner && (
+            <Button full variant="danger" onClick={deleteGroup} disabled={memberBusy === '__del__'}>
+              <Trash2 className="h-4 w-4" /> Delete group
+            </Button>
+          )}
         </div>
       </Sheet>
     </AppShell>

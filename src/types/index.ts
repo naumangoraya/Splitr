@@ -98,6 +98,36 @@ export interface Activity {
   created_at: string;
 }
 
+// chat message; expense (optional) = a mentioned transaction, rendered as a card
+export interface Message {
+  id: string;
+  group_id: string;
+  user_id: string;
+  body: string;
+  expense_id: string | null;
+  created_at: string;
+}
+
+// chat message enriched for display (sender name + optional mentioned expense)
+export interface ChatMessage extends Message {
+  senderName: string;
+  mention?: { id: string; description: string; amountCents: number; currency: string } | null;
+}
+
+export type NotificationType = 'expense_added' | 'settlement' | 'message';
+
+export interface AppNotification {
+  id: string;
+  user_id: string;
+  actor_id: string | null;
+  type: NotificationType;
+  group_id: string | null;
+  expense_id: string | null;
+  body: string;
+  read_at: string | null;
+  created_at: string;
+}
+
 export const CATEGORIES = [
   'general',
   'food',

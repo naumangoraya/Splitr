@@ -107,6 +107,30 @@ create table if not exists activity (
   created_at timestamptz not null default now()
 );
 
+-- chat: one row per message, attached to a group (direct group = 1-1 chat,
+-- regular group = group chat). expense_id lets a message reference/mention a transaction.
+create table if not exists messages (
+  id uuid primary key default gen_random_uuid(),
+  group_id uuid not null references groups(id) on delete cascade,
+  user_id uuid not null references profiles(id) on delete cascade,
+  body text not null,
+  expense_id uuid references expenses(id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+-- in-app notifications (realtime). One row per recipient.
+create table if not exists notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,   -- recipient
+  actor_id uuid references profiles(id) on delete set null,          -- who triggered it
+  type text not null,                                                -- 'expense_added' | 'settlement' | 'message' ...
+  group_id uuid references groups(id) on delete cascade,
+  expense_id uuid references expenses(id) on delete set null,
+  body text not null,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
 create table if not exists invitations (
   id uuid primary key default gen_random_uuid(),
   group_id uuid not null references groups(id) on delete cascade,
@@ -362,6 +386,8 @@ alter table settlements     enable row level security;
 alter table comments        enable row level security;
 alter table activity        enable row level security;
 alter table invitations     enable row level security;
+alter table messages        enable row level security;
+alter table notifications   enable row level security;
 
 -- profiles: readable by anyone signed in (needed to render names/avatars of co-members), writable only by self
 drop policy if exists profiles_read on profiles;
@@ -447,6 +473,49 @@ create policy invitations_rw on invitations for all to authenticated
   using (is_group_member(group_id, auth.uid()))
   with check (is_group_member(group_id, auth.uid()));
 
+-- messages: any member of the group can read + post
+drop policy if exists messages_read on messages;
+create policy messages_read on messages for select to authenticated
+  using (is_group_member(group_id, auth.uid()));
+drop policy if exists messages_insert on messages;
+create policy messages_insert on messages for insert to authenticated
+  with check (is_group_member(group_id, auth.uid()) and user_id = auth.uid());
+drop policy if exists messages_delete on messages;
+create policy messages_delete on messages for delete to authenticated
+  using (user_id = auth.uid());
+
+-- notifications: recipients read/update/delete their own.
+drop policy if exists notifications_read on notifications;
+create policy notifications_read on notifications for select to authenticated using (user_id = auth.uid());
+drop policy if exists notifications_update on notifications;
+create policy notifications_update on notifications for update to authenticated
+  using (user_id = auth.uid()) with check (user_id = auth.uid());
+drop policy if exists notifications_delete on notifications;
+create policy notifications_delete on notifications for delete to authenticated using (user_id = auth.uid());
+-- insert: actor must be the caller, recipient must be a co-member of a real group
+-- (prevents forged actor_id, arbitrary recipients, and group_id=null spam).
+drop policy if exists notifications_insert on notifications;
+create policy notifications_insert on notifications for insert to authenticated
+  with check (
+    actor_id = auth.uid()
+    and group_id is not null
+    and is_group_member(group_id, auth.uid())
+    and is_group_member(group_id, user_id)
+  );
+
+-- ============================================================
+-- REALTIME (so chat + notifications update live)
+-- REPLICA IDENTITY FULL so Realtime enforces RLS per-row on the stream.
+-- ============================================================
+alter table messages replica identity full;
+alter table notifications replica identity full;
+do $$ begin
+  alter publication supabase_realtime add table messages;
+exception when duplicate_object then null; end $$;
+do $$ begin
+  alter publication supabase_realtime add table notifications;
+exception when duplicate_object then null; end $$;
+
 -- ============================================================
 -- GRANTS (required for the Data API on projects created after 2026-05-30)
 -- ============================================================
@@ -466,3 +535,5 @@ create index if not exists idx_payments_expense on expense_payments(expense_id);
 create index if not exists idx_settlements_group on settlements(group_id);
 create index if not exists idx_activity_group on activity(group_id, created_at desc);
 create index if not exists idx_invitations_email on invitations(lower(email));
+create index if not exists idx_messages_group on messages(group_id, created_at);
+create index if not exists idx_notifications_user on notifications(user_id, created_at desc);

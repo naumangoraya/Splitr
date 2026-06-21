@@ -9,6 +9,7 @@ import Dashboard from '@/screens/Dashboard';
 import Groups from '@/screens/Groups';
 import GroupDetail from '@/screens/GroupDetail';
 import Balances from '@/screens/Balances';
+import Chat from '@/screens/Chat';
 import Friends from '@/screens/Friends';
 import Activity from '@/screens/Activity';
 import AddExpense from '@/screens/AddExpense';
@@ -40,6 +41,7 @@ export default function App() {
         <Route path="/groups" element={<Groups />} />
         <Route path="/group/:id" element={<GroupDetail />} />
         <Route path="/group/:id/balances" element={<Balances />} />
+        <Route path="/group/:id/chat" element={<Chat />} />
         <Route path="/friends" element={<Friends />} />
         <Route path="/activity" element={<Activity />} />
         <Route path="/add" element={<AddExpense />} />

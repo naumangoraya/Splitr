@@ -112,6 +112,7 @@ export default function AddExpense() {
       await db.addExpense({
         group_id: selectedGroup,
         paid_by: primaryPayer,
+        actor_id: me.id,
         amount_cents: totalCents,
         currency: groupCurrency,
         description: description.trim(),
