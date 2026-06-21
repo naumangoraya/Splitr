@@ -20,6 +20,10 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # map the optional secret to an env var so steps can check it in `if`
+    # (GitHub Actions doesn't allow the `secrets` context inside `if:`)
+    env:
+      GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
     steps:
       - uses: actions/checkout@v4
 
@@ -50,8 +54,8 @@ jobs:
         run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Add google-services.json (only if the secret is set → enables FCM push)
-        if: ${{ secrets.GOOGLE_SERVICES_JSON != '' }}
-        run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > android/app/google-services.json
+        if: ${{ env.GOOGLE_SERVICES_JSON != '' }}
+        run: echo "$GOOGLE_SERVICES_JSON" | base64 -d > android/app/google-services.json
 
       - name: Sync web assets into the Android project
         run: npx cap sync android
