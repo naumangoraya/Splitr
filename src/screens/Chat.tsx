@@ -47,8 +47,8 @@ export default function Chat() {
     return () => { supabase!.removeChannel(channel); };
   }, [id, load]);
 
-  // autoscroll to newest
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages.length]);
+  // autoscroll the message list (not the page) to newest
+  useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [messages.length]);
 
   async function send() {
     const body = text.trim();
@@ -75,6 +75,7 @@ export default function Chat() {
 
   return (
     <AppShell
+      flush
       header={
         <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-line bg-canvas/90 px-3 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur">
           <button className="tap flex h-11 w-11 flex-none items-center justify-center rounded-xl -ml-1" onClick={() => nav(-1)}><ChevronLeft className="h-6 w-6 text-ink-soft" /></button>
@@ -90,8 +91,8 @@ export default function Chat() {
       ) : error && messages.length === 0 ? (
         <ErrorState message={error} onRetry={load} />
       ) : (
-        <div className="flex min-h-[calc(100vh-8rem)] flex-col">
-          <div className="flex-1 space-y-2 px-4 py-4">
+        <div className="flex h-full flex-col overflow-hidden">
+          <div className="no-scrollbar min-h-0 flex-1 space-y-2 overflow-y-auto px-4 py-4">
             {messages.length === 0 && (
               <p className="py-10 text-center text-[14px] text-ink-muted">No messages yet. Say hi 👋</p>
             )}

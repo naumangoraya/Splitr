@@ -2,7 +2,9 @@ import { type ReactNode } from 'react';
 import { useOnline } from '@/hooks/useOnline';
 import { WifiOff } from 'lucide-react';
 
-export function AppShell({ children, header }: { children: ReactNode; header?: ReactNode }) {
+// `flush` = no bottom padding and no outer scroll (for screens like Chat that
+// manage their own fixed-height scroll area).
+export function AppShell({ children, header, flush = false }: { children: ReactNode; header?: ReactNode; flush?: boolean }) {
   const online = useOnline();
   return (
     <div className="min-h-screen bg-[#0f1020]">
@@ -13,7 +15,7 @@ export function AppShell({ children, header }: { children: ReactNode; header?: R
           </div>
         )}
         {header}
-        <main className="no-scrollbar flex-1 overflow-y-auto pb-28">{children}</main>
+        <main className={`no-scrollbar flex-1 ${flush ? 'overflow-hidden' : 'overflow-y-auto pb-28'}`}>{children}</main>
       </div>
     </div>
   );

@@ -1,0 +1,7 @@
+# Supabase project config. The push function is a server-to-server webhook
+# (called by the notifications INSERT Database Webhook), so it must NOT require
+# an end-user JWT — otherwise the webhook gets 401 and no push is sent.
+project_id = "splitr"
+
+[functions.push-on-notification]
+verify_jwt = false

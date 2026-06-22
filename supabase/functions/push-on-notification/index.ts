@@ -20,6 +20,13 @@ interface NotificationRow {
 
 Deno.serve(async (req) => {
   try {
+    // Deployed with --no-verify-jwt (it's a server-to-server webhook). Optional
+    // shared secret: if WEBHOOK_SECRET is set, the webhook must send it as a header.
+    const secret = Deno.env.get('WEBHOOK_SECRET');
+    if (secret && req.headers.get('x-webhook-secret') !== secret) {
+      return json({ error: 'unauthorized' }, 401);
+    }
+
     const payload = await req.json();
     const row: NotificationRow = payload.record ?? payload.new ?? payload;
     if (!row?.user_id || !row?.body) return json({ skipped: 'no recipient/body' });

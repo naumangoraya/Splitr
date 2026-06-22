@@ -496,6 +496,19 @@ const demoDb: Db = {
       id: uid(), group_id: groupId, user_id: meId, body,
       expense_id: expenseId ?? null, created_at: new Date().toISOString()
     });
+    // notify other members (in-app + push) — WhatsApp-style "Name: preview"
+    const senderName = profileById(meId)?.full_name || 'Someone';
+    const preview = (expenseId && (!body || body === '📎 expense'))
+      ? 'sent an expense'
+      : (body.length > 80 ? body.slice(0, 79) + '…' : body);
+    for (const memberId of (mem.members[groupId] ?? [])) {
+      if (memberId === meId) continue;
+      mem.notifications.unshift({
+        id: uid(), user_id: memberId, actor_id: meId, type: 'message',
+        group_id: groupId, expense_id: expenseId ?? null, read_at: null,
+        body: `${senderName}: ${preview}`, created_at: new Date().toISOString()
+      });
+    }
   },
   async listNotifications(meId) {
     return mem.notifications
@@ -943,10 +956,27 @@ const supaDb: Db = {
     });
   },
   async sendMessage(meId, groupId, body, expenseId) {
-    const { error } = await sb().from('messages').insert({
+    const client = sb();
+    const { error } = await client.from('messages').insert({
       group_id: groupId, user_id: meId, body, expense_id: expenseId ?? null
     });
     if (error) throw error;
+    // notify other group members so they get an in-app + push notification (best-effort)
+    const { data: members } = await client.from('group_members').select('user_id').eq('group_id', groupId);
+    const recipients = (members ?? []).map((m: any) => m.user_id as string).filter((u) => u !== meId);
+    if (recipients.length > 0) {
+      const { data: meProfile } = await client.from('profiles').select('full_name').eq('id', meId).maybeSingle();
+      const senderName = (meProfile?.full_name || 'Someone').trim();
+      const preview = (expenseId && (!body || body === '📎 expense'))
+        ? 'sent an expense'
+        : (body.length > 80 ? body.slice(0, 79) + '…' : body);
+      await client.from('notifications').insert(
+        recipients.map((u) => ({
+          user_id: u, actor_id: meId, type: 'message',
+          group_id: groupId, expense_id: expenseId ?? null, body: `${senderName}: ${preview}`
+        }))
+      ).then(() => {}, () => {}); // never block the send on a notification failure
+    }
   },
   async listNotifications(meId) {
     const { data, error } = await sb().from('notifications')

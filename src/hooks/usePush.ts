@@ -31,6 +31,17 @@ export function usePush(userId: string | undefined, onOpenGroup?: (groupId: stri
         }
         if (status !== 'granted' || cancelled) return;
 
+        // Android 8+ drops notifications sent to a non-existent channel. Create
+        // the 'default' channel the push payload targets so killed-app pushes show.
+        if (Capacitor.getPlatform() === 'android') {
+          try {
+            await PushNotifications.createChannel({
+              id: 'default', name: 'General', description: 'Expenses, settle-ups and chat',
+              importance: 5, visibility: 1
+            });
+          } catch { /* ignore */ }
+        }
+
         const onReg = await PushNotifications.addListener('registration', async (token) => {
           lastToken = token.value;
           // upsert this device's token for the current user
