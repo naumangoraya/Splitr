@@ -37,8 +37,8 @@ export default function Auth() {
     (mode === 'in' || (Boolean(name) && Boolean(confirm)));
 
   return (
-    <div className="min-h-screen bg-eidosyne-ink">
-      <div className="mx-auto flex min-h-screen max-w-[480px] flex-col justify-center bg-gradient-to-b from-[#15171c] to-eidosyne-ink px-6 text-white">
+    <div className="h-app overflow-y-auto bg-eidosyne-ink">
+      <div className="mx-auto flex min-h-app max-w-[480px] flex-col justify-center bg-gradient-to-b from-[#15171c] to-eidosyne-ink px-6 py-8 text-white">
         {/* Eidosyne company branding */}
         <div className="mb-8 flex justify-center">
           <EidosyneWordmark tagline />

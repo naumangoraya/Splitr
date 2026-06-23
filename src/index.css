@@ -2,9 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: light; }
+:root { color-scheme: light; --app-height: 100vh; }
 
 html, body, #root { height: 100%; }
+body { overflow: hidden; overscroll-behavior: none; } /* the app shell owns scrolling */
+
+/* Height tied to the *visible* viewport (keyboard-aware). Falls back to 100vh. */
+.h-app { height: var(--app-height); }
+.min-h-app { min-height: var(--app-height); }
+.max-h-app { max-height: var(--app-height); }
 body {
   margin: 0;
   background: #0f1020;

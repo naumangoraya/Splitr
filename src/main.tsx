@@ -3,10 +3,15 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter, HashRouter } from 'react-router-dom';
 import { Capacitor } from '@capacitor/core';
 import { AuthProvider } from '@/context/AuthProvider';
+import { initViewport } from '@/lib/viewport';
 import App from './App';
 import './index.css';
 
 const isNative = Capacitor.isNativePlatform();
+
+// Track the visible viewport height (so the keyboard pushes content up instead of
+// covering the chat composer / bottom sheets). Must run before first paint.
+initViewport();
 
 // On web we keep clean URLs; inside the native WebView a hash router avoids
 // any file-path / deep-link edge cases on reload.
@@ -29,7 +34,7 @@ const rootEl = document.getElementById('root')!;
 // readable message instead of a blank/crashed screen.
 function showFatal(message: string) {
   rootEl.innerHTML =
-    '<div style="min-height:100vh;display:flex;flex-direction:column;align-items:center;' +
+    '<div style="min-height:100%;height:100%;overflow:auto;display:flex;flex-direction:column;align-items:center;' +
     'justify-content:center;gap:12px;padding:24px;background:#0c0d10;color:#fff;' +
     'font-family:system-ui,sans-serif;text-align:center">' +
     '<div style="font-size:22px;font-weight:800">Ei<span style="color:#22c55e">dosyne</span></div>' +

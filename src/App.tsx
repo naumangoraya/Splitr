@@ -12,8 +12,10 @@ import Groups from '@/screens/Groups';
 import GroupDetail from '@/screens/GroupDetail';
 import Balances from '@/screens/Balances';
 import Chat from '@/screens/Chat';
+import Chats from '@/screens/Chats';
 import Friends from '@/screens/Friends';
 import Activity from '@/screens/Activity';
+import Notifications from '@/screens/Notifications';
 import AddExpense from '@/screens/AddExpense';
 import Profile from '@/screens/Profile';
 
@@ -29,7 +31,7 @@ export default function App() {
   if (loading) {
     // Branded splash while auth/session resolves
     return (
-      <div className="flex min-h-screen flex-col items-center justify-center gap-6 bg-eidosyne-ink">
+      <div className="flex h-app flex-col items-center justify-center gap-6 bg-eidosyne-ink">
         <EidosyneWordmark tagline />
         <Spinner />
       </div>
@@ -38,8 +40,11 @@ export default function App() {
 
   if (!user) return <Auth />;
 
-  // Full-screen routes (no bottom nav)
-  const fullScreen = location.pathname.startsWith('/add') || location.pathname.startsWith('/group/');
+  // Full-screen routes (no bottom nav / FAB)
+  const fullScreen = location.pathname.startsWith('/add')
+    || location.pathname.startsWith('/group/')
+    || location.pathname === '/chats'
+    || location.pathname === '/notifications';
 
   return (
     <>
@@ -49,8 +54,10 @@ export default function App() {
         <Route path="/group/:id" element={<GroupDetail />} />
         <Route path="/group/:id/balances" element={<Balances />} />
         <Route path="/group/:id/chat" element={<Chat />} />
+        <Route path="/chats" element={<Chats />} />
         <Route path="/friends" element={<Friends />} />
         <Route path="/activity" element={<Activity />} />
+        <Route path="/notifications" element={<Notifications />} />
         <Route path="/add" element={<AddExpense />} />
         <Route path="/add/:groupId" element={<AddExpense />} />
         <Route path="/profile" element={<Profile />} />

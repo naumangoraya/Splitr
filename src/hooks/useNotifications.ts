@@ -7,7 +7,10 @@ import type { AppNotification } from '@/types';
 /**
  * Loads the user's notifications and subscribes to new ones in realtime.
  * On a new notification it fires a system-tray local notification (native).
- * Returns the list, unread count, a reloader, and a markAllRead action.
+ *
+ * Chat alerts (type 'message') are kept separate from "general" alerts
+ * (expense/settlement): the bell shows general only; the chat icon shows the
+ * unread message count. So we expose both streams and counts.
  */
 export function useNotifications(userId: string | undefined) {
   const [items, setItems] = useState<AppNotification[]>([]);
@@ -17,11 +20,12 @@ export function useNotifications(userId: string | undefined) {
     try { setItems(await db.listNotifications(userId)); } catch { /* ignore */ }
   }, [userId]);
 
-  const markAllRead = useCallback(async () => {
+  const markGeneralRead = useCallback(async () => {
     if (!userId) return;
     try {
-      await db.markNotificationsRead(userId);
-      setItems((cur) => cur.map((n) => (n.read_at ? n : { ...n, read_at: new Date().toISOString() })));
+      await db.markNotificationsRead(userId, 'general');
+      const now = new Date().toISOString();
+      setItems((cur) => cur.map((n) => (n.type !== 'message' && !n.read_at ? { ...n, read_at: now } : n)));
     } catch { /* ignore */ }
   }, [userId]);
 
@@ -43,8 +47,10 @@ export function useNotifications(userId: string | undefined) {
     return () => { supabase!.removeChannel(channel); };
   }, [userId]);
 
-  const unread = items.filter((n) => !n.read_at).length;
-  return { items, unread, reload, markAllRead };
+  const general = items.filter((n) => n.type !== 'message');
+  const generalUnread = general.filter((n) => !n.read_at).length;
+  const messageUnread = items.filter((n) => n.type === 'message' && !n.read_at).length;
+  return { items, general, generalUnread, messageUnread, reload, markGeneralRead };
 }
 
 // Fire a system-tray notification on native; no-op on web.

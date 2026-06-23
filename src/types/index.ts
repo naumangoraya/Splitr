@@ -111,7 +111,48 @@ export interface Message {
 // chat message enriched for display (sender name + optional mentioned expense)
 export interface ChatMessage extends Message {
   senderName: string;
-  mention?: { id: string; description: string; amountCents: number; currency: string } | null;
+  // groupId = the mentioned expense's own group (may differ from the chat's
+  // group when a friend chat references a shared-group transaction).
+  mention?: { id: string; description: string; amountCents: number; currency: string; groupId: string } | null;
+}
+
+// An expense that can be mentioned/attached in a chat. In a friend (direct) chat
+// this spans BOTH the personal balance between the two AND any group they share;
+// in a group chat it's that group's transactions. groupLabel tells the user where
+// each one comes from ("Personal" for the direct balance, else the group name).
+export interface MentionableExpense {
+  id: string;
+  description: string;
+  amountCents: number;
+  currency: string;
+  category: string;
+  groupId: string;
+  groupLabel: string;
+  date: string; // created_at, for sorting
+}
+
+// a person you can have a 1-to-1 chat with (anyone you share any group with).
+// directGroupId is the existing 1-1 group, or null if a chat hasn't started yet
+// (tapping creates one on demand).
+export interface ChatPerson {
+  id: string;
+  name: string;
+  email: string;
+  directGroupId: string | null;
+  lastMessage: string | null;
+  lastAt: string | null;
+  unread: number;
+}
+
+// one row in the Chats inbox — a direct (1-to-1) or group conversation
+export interface Conversation {
+  groupId: string;
+  title: string;            // friend's name for direct, group name for group
+  isDirect: boolean;
+  avatarId: string;         // seed for the avatar colour (other person for direct, else group)
+  lastMessage: string | null;
+  lastAt: string | null;    // time of the last message (null = no messages yet)
+  unread: number;           // unread message notifications for this conversation
 }
 
 export type NotificationType = 'expense_added' | 'settlement' | 'message';

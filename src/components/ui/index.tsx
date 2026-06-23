@@ -97,13 +97,20 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 
 export function Sheet({ open, onClose, title, children }: { open: boolean; onClose: () => void; title: string; children: ReactNode }) {
   if (!open) return null;
+  // The overlay spans the *visible* viewport (h-app), so the panel docks just
+  // above the on-screen keyboard; the body scrolls internally when content is
+  // taller than the available space (short screens / keyboard open).
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center" role="dialog" aria-modal="true">
+    <div className="fixed inset-x-0 top-0 z-50 flex h-app items-end justify-center" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-ink/40" onClick={onClose} />
-      <div className="relative w-full max-w-[480px] rounded-t-3xl bg-canvas p-5 shadow-sheet animate-[slideup_.2s_ease]">
-        <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-line" />
-        <h2 className="mb-4 font-display text-[18px] font-semibold text-ink">{title}</h2>
-        {children}
+      <div className="relative flex max-h-app w-full max-w-[480px] flex-col rounded-t-3xl bg-canvas shadow-sheet animate-[slideup_.2s_ease]">
+        <div className="flex-none px-5 pt-4">
+          <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-line" />
+          <h2 className="mb-4 font-display text-[18px] font-semibold text-ink">{title}</h2>
+        </div>
+        <div className="no-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))]">
+          {children}
+        </div>
       </div>
       <style>{`@keyframes slideup{from{transform:translateY(100%)}to{transform:translateY(0)}}`}</style>
     </div>

@@ -5,9 +5,9 @@ import { useAsync } from '@/hooks/useAsync';
 import { db } from '@/data/db';
 import { supabase, isConfigured } from '@/lib/supabase';
 import { AppShell } from '@/components/layout/AppShell';
-import { Spinner, ErrorState, Avatar, Sheet, Button } from '@/components/ui';
+import { Spinner, ErrorState, Avatar, Sheet } from '@/components/ui';
 import { fromCents } from '@/lib/money';
-import type { ChatMessage } from '@/types';
+import type { ChatMessage, MentionableExpense } from '@/types';
 import { ChevronLeft, Send, Receipt, Paperclip } from 'lucide-react';
 
 export default function Chat() {
@@ -18,6 +18,7 @@ export default function Chat() {
 
   const group = useAsync(() => db.getGroup(id!), [id]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [mentions, setMentions] = useState<MentionableExpense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
@@ -25,6 +26,8 @@ export default function Chat() {
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionId, setMentionId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+
+  const scrollToEnd = useCallback(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, []);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -34,6 +37,17 @@ export default function Chat() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // opening / viewing a chat clears its unread message alerts
+  useEffect(() => { if (id) db.markChatRead(me.id, id).catch(() => {}); }, [id, me.id, messages.length]);
+
+  // mentionable transactions (personal + shared groups for a friend chat) — load once per chat
+  useEffect(() => {
+    if (!id) return;
+    let alive = true;
+    db.listMentionableExpenses(me.id, id).then((m) => { if (alive) setMentions(m); }).catch(() => {});
+    return () => { alive = false; };
+  }, [id, me.id]);
 
   // realtime: append new messages live
   useEffect(() => {
@@ -48,7 +62,7 @@ export default function Chat() {
   }, [id, load]);
 
   // autoscroll the message list (not the page) to newest
-  useEffect(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, [messages.length]);
+  useEffect(() => { scrollToEnd(); }, [messages.length, scrollToEnd]);
 
   async function send() {
     const body = text.trim();
@@ -71,7 +85,15 @@ export default function Chat() {
         ? (group.data.members.find((m) => m.id !== me.id)?.full_name ?? 'Chat')
         : group.data.group.name)
     : 'Chat';
-  const expenses = group.data?.expenses ?? [];
+  const selectedMention = mentions.find((e) => e.id === mentionId);
+
+  // group the mention list by source ("Personal" / each group name), keeping date order
+  const mentionGroups = new Map<string, MentionableExpense[]>();
+  for (const m of mentions) {
+    const arr = mentionGroups.get(m.groupLabel) ?? [];
+    arr.push(m);
+    mentionGroups.set(m.groupLabel, arr);
+  }
 
   return (
     <AppShell
@@ -104,11 +126,11 @@ export default function Chat() {
                   <div className={`max-w-[75%] rounded-2xl px-3.5 py-2 ${mine ? 'bg-brand text-white' : 'bg-card text-ink shadow-card'}`}>
                     {!mine && <p className="mb-0.5 text-[11px] font-semibold opacity-70">{m.senderName}</p>}
                     {m.mention && (
-                      <button onClick={() => nav(`/group/${m.group_id}`)}
+                      <button onClick={() => nav(`/group/${m.mention?.groupId ?? m.group_id}`)}
                         className={`tap mb-1 flex w-full items-center gap-2 rounded-xl px-2.5 py-1.5 text-left ${mine ? 'bg-white/15' : 'bg-brand-wash'}`}>
                         <Receipt className={`h-4 w-4 flex-none ${mine ? 'text-white' : 'text-brand'}`} />
                         <span className="min-w-0 flex-1 truncate text-[12.5px] font-medium">{m.mention.description}</span>
-                        <span className="text-[12.5px] font-semibold">{fromCents(m.mention.amountCents, m.mention.currency)}</span>
+                        <span className="flex-none text-[12.5px] font-semibold">{fromCents(m.mention.amountCents, m.mention.currency)}</span>
                       </button>
                     )}
                     {m.body && m.body !== '📎 expense' && <p className="whitespace-pre-wrap break-words text-[14px]">{m.body}</p>}
@@ -123,21 +145,22 @@ export default function Chat() {
           </div>
 
           {/* composer */}
-          <div className="sticky bottom-0 border-t border-line bg-canvas/95 px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur">
-            {mentionId && (
+          <div className="flex-none border-t border-line bg-canvas/95 px-3 py-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur">
+            {selectedMention && (
               <div className="mb-2 flex items-center gap-2 rounded-xl bg-brand-wash px-3 py-1.5 text-[12.5px] text-brand">
-                <Receipt className="h-4 w-4" />
-                <span className="min-w-0 flex-1 truncate">{expenses.find((e) => e.id === mentionId)?.description ?? 'Expense'}</span>
-                <button className="tap font-semibold" onClick={() => setMentionId(null)}>✕</button>
+                <Receipt className="h-4 w-4 flex-none" />
+                <span className="min-w-0 flex-1 truncate">{selectedMention.description} · {fromCents(selectedMention.amountCents, selectedMention.currency)}</span>
+                <button className="tap flex-none font-semibold" onClick={() => setMentionId(null)}>✕</button>
               </div>
             )}
             <div className="flex items-end gap-2">
-              <button onClick={() => setMentionOpen(true)} disabled={expenses.length === 0}
+              <button onClick={() => setMentionOpen(true)} disabled={mentions.length === 0}
                 className="tap flex h-11 w-11 flex-none items-center justify-center rounded-xl text-ink-muted disabled:opacity-30" aria-label="Mention a transaction">
                 <Paperclip className="h-5 w-5" />
               </button>
               <textarea
                 value={text} onChange={(e) => setText(e.target.value)} rows={1} placeholder="Message…"
+                onFocus={() => setTimeout(scrollToEnd, 250)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
                 className="max-h-28 min-h-[44px] flex-1 resize-none rounded-2xl border border-line bg-white px-3.5 py-2.5 text-[15px] text-ink outline-none focus:border-brand"
               />
@@ -150,21 +173,27 @@ export default function Chat() {
         </div>
       )}
 
-      {/* mention a transaction */}
+      {/* mention a transaction — grouped by where it comes from */}
       <Sheet open={mentionOpen} onClose={() => setMentionOpen(false)} title="Mention a transaction">
-        <div className="max-h-[60vh] overflow-y-auto">
-          {expenses.length === 0 ? (
-            <p className="py-4 text-[13px] text-ink-muted">No expenses in this group yet.</p>
-          ) : expenses.map((e, i) => (
-            <button key={e.id} onClick={() => { setMentionId(e.id); setMentionOpen(false); }}
-              className={`tap flex w-full items-center gap-3 px-1 py-3 text-left ${i > 0 ? 'border-t border-line' : ''}`}>
-              <div className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-brand-wash text-[10px] font-semibold uppercase text-brand">{e.category.slice(0, 3)}</div>
-              <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{e.description}</span>
-              <span className="tabular text-[13px] font-semibold text-ink-soft">{fromCents(e.amount_cents, e.currency)}</span>
-            </button>
-          ))}
-        </div>
-        <Button full variant="soft" className="mt-3" onClick={() => setMentionOpen(false)}>Cancel</Button>
+        {mentions.length === 0 ? (
+          <p className="py-4 text-[13px] text-ink-muted">No transactions to mention yet.</p>
+        ) : (
+          [...mentionGroups.entries()].map(([label, items]) => (
+            <div key={label} className="mb-4 last:mb-0">
+              <p className="mb-1.5 px-1 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">{label}</p>
+              <div className="overflow-hidden rounded-xl bg-card shadow-card">
+                {items.map((e, i) => (
+                  <button key={e.id} onClick={() => { setMentionId(e.id); setMentionOpen(false); }}
+                    className={`tap flex w-full items-center gap-3 px-3 py-3 text-left ${i > 0 ? 'border-t border-line' : ''}`}>
+                    <div className="flex h-9 w-9 flex-none items-center justify-center rounded-xl bg-brand-wash text-[10px] font-semibold uppercase text-brand">{e.category.slice(0, 3)}</div>
+                    <span className="min-w-0 flex-1 truncate text-[14px] font-medium text-ink">{e.description}</span>
+                    <span className="tabular flex-none text-[13px] font-semibold text-ink-soft">{fromCents(e.amountCents, e.currency)}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))
+        )}
       </Sheet>
     </AppShell>
   );

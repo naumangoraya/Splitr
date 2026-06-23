@@ -1,5 +1,5 @@
 import { supabase, isConfigured } from '@/lib/supabase';
-import type { Profile, Group, Member, Expense, Settlement, Comment, Activity, SplitType, Message, ChatMessage, AppNotification } from '@/types';
+import type { Profile, Group, Member, Expense, Settlement, Comment, Activity, SplitType, Message, ChatMessage, AppNotification, MentionableExpense, Conversation, ChatPerson } from '@/types';
 import { pairwiseEdges, pairwiseNetBetween, expenseNet } from '@/lib/balances';
 import * as seed from './demoData';
 
@@ -124,9 +124,20 @@ export interface Db {
   // chat
   listMessages(groupId: string): Promise<ChatMessage[]>;
   sendMessage(meId: string, groupId: string, body: string, expenseId?: string | null): Promise<void>;
+  // transactions that can be mentioned in this chat (direct chat = personal +
+  // shared-group expenses with the other person; group chat = the group's expenses)
+  listMentionableExpenses(meId: string, groupId: string): Promise<MentionableExpense[]>;
+  // everyone I can 1-to-1 chat with (anyone I share any group with), with their
+  // existing direct chat (if any). Used by the Chats inbox "People" list.
+  listChatPeople(meId: string): Promise<ChatPerson[]>;
+  // all my group conversations for the Chats inbox, newest first
+  listConversations(meId: string): Promise<Conversation[]>;
   // notifications
   listNotifications(meId: string): Promise<AppNotification[]>;
-  markNotificationsRead(meId: string): Promise<void>;
+  // kind: 'general' = expense/settlement only, 'message' = chat only, 'all' = both
+  markNotificationsRead(meId: string, kind?: 'general' | 'message' | 'all'): Promise<void>;
+  // clear unread chat alerts for one conversation (called when its chat is opened)
+  markChatRead(meId: string, groupId: string): Promise<void>;
 }
 
 // 'added' = the person already had an account and is now a member.
@@ -487,9 +498,35 @@ const demoDb: Db = {
         return {
           ...m,
           senderName: profileById(m.user_id)?.full_name ?? '—',
-          mention: exp ? { id: exp.id, description: exp.description, amountCents: exp.amount_cents, currency: exp.currency } : null
+          mention: exp ? { id: exp.id, description: exp.description, amountCents: exp.amount_cents, currency: exp.currency, groupId: exp.group_id } : null
         } as ChatMessage;
       });
+  },
+  async listMentionableExpenses(meId, groupId) {
+    const chat = mem.groups.find((g) => g.id === groupId);
+    if (!chat) return [];
+    const toItem = (e: Expense, g: Group): MentionableExpense => ({
+      id: e.id, description: e.description, amountCents: e.amount_cents, currency: e.currency,
+      category: e.category, groupId: g.id, groupLabel: g.is_direct ? 'Personal' : g.name, date: e.created_at
+    });
+    if (!chat.is_direct) {
+      return mem.expenses
+        .filter((e) => e.group_id === groupId)
+        .sort((a, b) => b.created_at.localeCompare(a.created_at))
+        .map((e) => toItem(e, chat));
+    }
+    // direct chat: every expense involving BOTH of us, across all shared groups
+    const otherId = (mem.members[groupId] ?? []).find((u) => u !== meId) ?? null;
+    const sharedGroups = mem.groups.filter((g) =>
+      (mem.members[g.id] ?? []).includes(meId) && (!otherId || (mem.members[g.id] ?? []).includes(otherId)));
+    const out: MentionableExpense[] = [];
+    for (const g of sharedGroups) {
+      for (const e of mem.expenses.filter((e) => e.group_id === g.id)) {
+        const involved = new Set<string>([e.paid_by, ...e.splits.map((s) => s.user_id), ...(e.payments ?? []).map((p) => p.user_id)]);
+        if (involved.has(meId) && (!otherId || involved.has(otherId))) out.push(toItem(e, g));
+      }
+    }
+    return out.sort((a, b) => b.date.localeCompare(a.date));
   },
   async sendMessage(meId, groupId, body, expenseId) {
     mem.messages.push({
@@ -510,14 +547,77 @@ const demoDb: Db = {
       });
     }
   },
+  async listChatPeople(meId) {
+    // everyone I share ANY group with (direct or regular)
+    const peopleIds = new Set<string>();
+    for (const g of mem.groups) {
+      const roster = mem.members[g.id] ?? [];
+      if (!roster.includes(meId)) continue;
+      for (const u of roster) if (u !== meId) peopleIds.add(u);
+    }
+    return [...peopleIds]
+      .map((pid) => {
+        const direct = mem.groups.find((g) => g.is_direct
+          && (mem.members[g.id] ?? []).includes(meId) && (mem.members[g.id] ?? []).includes(pid));
+        const dg = direct?.id ?? null;
+        const msgs = dg
+          ? mem.messages.filter((m) => m.group_id === dg).sort((a, b) => b.created_at.localeCompare(a.created_at))
+          : [];
+        const last = msgs[0] ?? null;
+        const unread = dg
+          ? mem.notifications.filter((n) => n.user_id === meId && n.type === 'message' && n.group_id === dg && !n.read_at).length
+          : 0;
+        const p = profileById(pid);
+        return {
+          id: pid, name: p.full_name || p.email, email: p.email,
+          directGroupId: dg, lastMessage: last ? last.body : null, lastAt: last ? last.created_at : null, unread
+        } as ChatPerson;
+      })
+      .sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? '') || a.name.localeCompare(b.name));
+  },
+  async listConversations(meId) {
+    const myGroups = mem.groups.filter((g) => !g.is_direct && (mem.members[g.id] ?? []).includes(meId));
+    return myGroups
+      .map((g) => {
+        const msgs = mem.messages
+          .filter((m) => m.group_id === g.id)
+          .sort((a, b) => b.created_at.localeCompare(a.created_at));
+        const last = msgs[0] ?? null;
+        const otherId = g.is_direct ? ((mem.members[g.id] ?? []).find((u) => u !== meId) ?? null) : null;
+        const unread = mem.notifications.filter(
+          (n) => n.user_id === meId && n.type === 'message' && n.group_id === g.id && !n.read_at
+        ).length;
+        return {
+          groupId: g.id,
+          title: g.is_direct ? (otherId ? profileById(otherId).full_name : g.name) : g.name,
+          isDirect: g.is_direct,
+          avatarId: otherId ?? g.id,
+          lastMessage: last ? last.body : null,
+          lastAt: last ? last.created_at : null,
+          unread
+        } as Conversation;
+      })
+      .sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? ''));
+  },
   async listNotifications(meId) {
     return mem.notifications
       .filter((n) => n.user_id === meId)
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
   },
-  async markNotificationsRead(meId) {
+  async markNotificationsRead(meId, kind = 'all') {
     const now = new Date().toISOString();
-    for (const n of mem.notifications) if (n.user_id === meId && !n.read_at) n.read_at = now;
+    for (const n of mem.notifications) {
+      if (n.user_id !== meId || n.read_at) continue;
+      if (kind === 'general' && n.type === 'message') continue;
+      if (kind === 'message' && n.type !== 'message') continue;
+      n.read_at = now;
+    }
+  },
+  async markChatRead(meId, groupId) {
+    const now = new Date().toISOString();
+    for (const n of mem.notifications) {
+      if (n.user_id === meId && n.type === 'message' && n.group_id === groupId && !n.read_at) n.read_at = now;
+    }
   }
 };
 
@@ -942,7 +1042,7 @@ const supaDb: Db = {
     const expenseIds = [...new Set(rows.map((m) => m.expense_id).filter(Boolean))] as string[];
     const [{ data: ps }, { data: exps }] = await Promise.all([
       userIds.length ? client.from('profiles').select('id, full_name').in('id', userIds) : Promise.resolve({ data: [] as any[] }),
-      expenseIds.length ? client.from('expenses').select('id, description, amount_cents, currency').in('id', expenseIds) : Promise.resolve({ data: [] as any[] })
+      expenseIds.length ? client.from('expenses').select('id, group_id, description, amount_cents, currency').in('id', expenseIds) : Promise.resolve({ data: [] as any[] })
     ]);
     const nameMap = new Map((ps ?? []).map((p: any) => [p.id, p.full_name as string]));
     const expMap = new Map((exps ?? []).map((e: any) => [e.id, e]));
@@ -951,9 +1051,59 @@ const supaDb: Db = {
       return {
         ...m,
         senderName: nameMap.get(m.user_id) ?? '—',
-        mention: e ? { id: e.id, description: e.description, amountCents: Number(e.amount_cents), currency: e.currency } : null
+        mention: e ? { id: e.id, description: e.description, amountCents: Number(e.amount_cents), currency: e.currency, groupId: e.group_id } : null
       } as ChatMessage;
     });
+  },
+  async listMentionableExpenses(meId, groupId) {
+    const client = sb();
+    const { data: chat } = await client.from('groups').select('id, name, is_direct').eq('id', groupId).single();
+    const chatGroup = chat as { id: string; name: string; is_direct: boolean } | null;
+    if (!chatGroup) return [];
+
+    // group chat → just this group's transactions
+    if (!chatGroup.is_direct) {
+      const { data: exp } = await client.from('expenses')
+        .select(EXPENSE_SELECT).eq('group_id', groupId).is('deleted_at', null)
+        .order('created_at', { ascending: false }).limit(300);
+      return (exp ?? []).map(rowToExpense).map((e) => ({
+        id: e.id, description: e.description, amountCents: e.amount_cents, currency: e.currency,
+        category: e.category, groupId: e.group_id, groupLabel: chatGroup.name, date: e.created_at
+      }));
+    }
+
+    // direct chat → personal + every shared group with the other person
+    const { data: roster } = await client.from('group_members').select('user_id').eq('group_id', groupId);
+    const otherId = (roster ?? []).map((r: any) => r.user_id as string).find((u) => u !== meId) ?? null;
+    const { data: mine } = await client.from('group_members').select('group_id').eq('user_id', meId);
+    const myGroupIds = [...new Set((mine ?? []).map((m: any) => m.group_id as string))];
+    if (myGroupIds.length === 0) return [];
+    let sharedIds = [groupId];
+    if (otherId) {
+      const { data: shared } = await client.from('group_members')
+        .select('group_id').eq('user_id', otherId).in('group_id', myGroupIds);
+      sharedIds = [...new Set([groupId, ...((shared ?? []).map((s: any) => s.group_id as string))])];
+    }
+    const [{ data: gs }, { data: exps }] = await Promise.all([
+      client.from('groups').select('id, name, is_direct').in('id', sharedIds),
+      client.from('expenses').select(EXPENSE_SELECT).in('group_id', sharedIds).is('deleted_at', null)
+        .order('created_at', { ascending: false }).limit(300)
+    ]);
+    const gmap = new Map((gs ?? []).map((g: any) => [g.id, g as { id: string; name: string; is_direct: boolean }]));
+    const out: MentionableExpense[] = [];
+    for (const row of exps ?? []) {
+      const e = rowToExpense(row);
+      const involved = new Set<string>([e.paid_by, ...e.splits.map((s) => s.user_id), ...e.payments.map((p) => p.user_id)]);
+      if (!involved.has(meId)) continue;
+      if (otherId && !involved.has(otherId)) continue;
+      const g = gmap.get(e.group_id);
+      out.push({
+        id: e.id, description: e.description, amountCents: e.amount_cents, currency: e.currency,
+        category: e.category, groupId: e.group_id,
+        groupLabel: g ? (g.is_direct ? 'Personal' : g.name) : 'Group', date: e.created_at
+      });
+    }
+    return out;
   },
   async sendMessage(meId, groupId, body, expenseId) {
     const client = sb();
@@ -978,15 +1128,99 @@ const supaDb: Db = {
       ).then(() => {}, () => {}); // never block the send on a notification failure
     }
   },
+  async listChatPeople(meId) {
+    const client = sb();
+    const { data: mems, error } = await client
+      .from('group_members').select('group_id, groups(is_direct)').eq('user_id', meId);
+    if (error) throw error;
+    const myGroupIds = [...new Set((mems ?? []).map((m: any) => m.group_id as string))];
+    if (myGroupIds.length === 0) return [];
+    const directGroupIds = new Set((mems ?? []).filter((m: any) => m.groups?.is_direct).map((m: any) => m.group_id as string));
+
+    // everyone in my groups + which direct group maps to which person
+    const { data: rows } = await client
+      .from('group_members').select('group_id, profiles(*)').in('group_id', myGroupIds);
+    const people = new Map<string, Profile>();
+    const directByPerson = new Map<string, string>();
+    for (const r of (rows ?? []) as any[]) {
+      const p = r.profiles as Profile;
+      if (!p || p.id === meId) continue;
+      people.set(p.id, p);
+      if (directGroupIds.has(r.group_id)) directByPerson.set(p.id, r.group_id);
+    }
+    if (people.size === 0) return [];
+
+    const dGroupIds = [...directByPerson.values()];
+    const [{ data: msgs }, { data: notifs }] = await Promise.all([
+      dGroupIds.length
+        ? client.from('messages').select('group_id, body, created_at').in('group_id', dGroupIds).order('created_at', { ascending: false }).limit(400)
+        : Promise.resolve({ data: [] as any[] }),
+      client.from('notifications').select('group_id').eq('user_id', meId).eq('type', 'message').is('read_at', null)
+    ]);
+    const lastByGroup = new Map<string, { body: string; created_at: string }>();
+    for (const m of (msgs ?? []) as any[]) if (!lastByGroup.has(m.group_id)) lastByGroup.set(m.group_id, { body: m.body, created_at: m.created_at });
+    const unreadByGroup = new Map<string, number>();
+    for (const n of (notifs ?? []) as any[]) if (n.group_id) unreadByGroup.set(n.group_id, (unreadByGroup.get(n.group_id) ?? 0) + 1);
+
+    return [...people.values()]
+      .map((p) => {
+        const dg = directByPerson.get(p.id) ?? null;
+        const last = dg ? lastByGroup.get(dg) ?? null : null;
+        return {
+          id: p.id, name: p.full_name || p.email, email: p.email,
+          directGroupId: dg, lastMessage: last ? last.body : null, lastAt: last ? last.created_at : null,
+          unread: dg ? (unreadByGroup.get(dg) ?? 0) : 0
+        } as ChatPerson;
+      })
+      .sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? '') || a.name.localeCompare(b.name));
+  },
+  async listConversations(meId) {
+    const client = sb();
+    const { data: mems, error } = await client
+      .from('group_members').select('group_id, groups(*)').eq('user_id', meId);
+    if (error) throw error;
+    const groups = (mems ?? []).map((m: any) => m.groups as Group).filter((g) => g && !g.is_direct);
+    if (groups.length === 0) return [];
+    const groupIds = groups.map((g) => g.id);
+    const [{ data: msgs }, { data: notifs }] = await Promise.all([
+      client.from('messages').select('group_id, body, created_at')
+        .in('group_id', groupIds).order('created_at', { ascending: false }).limit(400),
+      client.from('notifications').select('group_id')
+        .eq('user_id', meId).eq('type', 'message').is('read_at', null)
+    ]);
+    const lastByGroup = new Map<string, { body: string; created_at: string }>();
+    for (const m of (msgs ?? []) as any[]) if (!lastByGroup.has(m.group_id)) lastByGroup.set(m.group_id, { body: m.body, created_at: m.created_at });
+    const unreadByGroup = new Map<string, number>();
+    for (const n of (notifs ?? []) as any[]) if (n.group_id) unreadByGroup.set(n.group_id, (unreadByGroup.get(n.group_id) ?? 0) + 1);
+    return groups
+      .map((g) => {
+        const last = lastByGroup.get(g.id) ?? null;
+        return {
+          groupId: g.id, title: g.name, isDirect: false, avatarId: g.id,
+          lastMessage: last ? last.body : null, lastAt: last ? last.created_at : null,
+          unread: unreadByGroup.get(g.id) ?? 0
+        } as Conversation;
+      })
+      .sort((a, b) => (b.lastAt ?? '').localeCompare(a.lastAt ?? ''));
+  },
   async listNotifications(meId) {
     const { data, error } = await sb().from('notifications')
       .select('*').eq('user_id', meId).order('created_at', { ascending: false }).limit(50);
     if (error) throw error;
     return (data ?? []) as AppNotification[];
   },
-  async markNotificationsRead(meId) {
-    const { error } = await sb().from('notifications')
+  async markNotificationsRead(meId, kind = 'all') {
+    let q = sb().from('notifications')
       .update({ read_at: new Date().toISOString() }).eq('user_id', meId).is('read_at', null);
+    if (kind === 'general') q = q.neq('type', 'message');
+    if (kind === 'message') q = q.eq('type', 'message');
+    const { error } = await q;
+    if (error) throw error;
+  },
+  async markChatRead(meId, groupId) {
+    const { error } = await sb().from('notifications')
+      .update({ read_at: new Date().toISOString() })
+      .eq('user_id', meId).eq('type', 'message').eq('group_id', groupId).is('read_at', null);
     if (error) throw error;
   }
 } as Db;

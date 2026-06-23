@@ -7,7 +7,7 @@ import { db } from '@/data/db';
 import { AppShell, Header } from '@/components/layout/AppShell';
 import { Avatar, Spinner, ErrorState, EmptyState, Button, Sheet } from '@/components/ui';
 import { fromCents } from '@/lib/money';
-import { Plus, ChevronRight, Bell } from 'lucide-react';
+import { Plus, ChevronRight, Bell, MessageCircle, Maximize2 } from 'lucide-react';
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -31,17 +31,26 @@ export default function Dashboard() {
 
   return (
     <AppShell header={<Header title={`Hi, ${me.full_name.split(' ')[0]}`} right={
-      <div className="flex items-center gap-1.5">
-        <button onClick={() => { setNotifOpen(true); notif.markAllRead(); }} aria-label="Notifications"
+      <div className="flex items-center gap-0.5">
+        <button onClick={() => nav('/chats')} aria-label="Chats"
           className="tap relative flex h-10 w-10 items-center justify-center rounded-xl text-ink-soft">
-          <Bell className="h-[22px] w-[22px]" />
-          {notif.unread > 0 && (
-            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-owe px-1 text-[10px] font-bold text-white">
-              {notif.unread > 9 ? '9+' : notif.unread}
+          <MessageCircle className="h-[22px] w-[22px]" />
+          {notif.messageUnread > 0 && (
+            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-bold text-white">
+              {notif.messageUnread > 9 ? '9+' : notif.messageUnread}
             </span>
           )}
         </button>
-        <Button variant="soft" className="h-10 px-3" onClick={() => nav('/add')}><Plus className="h-4 w-4" /> Add</Button>
+        <button onClick={() => { setNotifOpen(true); notif.markGeneralRead(); }} aria-label="Notifications"
+          className="tap relative flex h-10 w-10 items-center justify-center rounded-xl text-ink-soft">
+          <Bell className="h-[22px] w-[22px]" />
+          {notif.generalUnread > 0 && (
+            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-owe px-1 text-[10px] font-bold text-white">
+              {notif.generalUnread > 9 ? '9+' : notif.generalUnread}
+            </span>
+          )}
+        </button>
+        <Button variant="soft" className="ml-1 h-10 px-2.5" onClick={() => nav('/add')}><Plus className="h-4 w-4" /> Add</Button>
       </div>
     } />}>
       {loading ? (
@@ -132,23 +141,31 @@ export default function Dashboard() {
       )}
 
       <Sheet open={notifOpen} onClose={() => setNotifOpen(false)} title="Notifications">
-        <div className="max-h-[60vh] space-y-2 overflow-y-auto">
-          {notif.items.length === 0 ? (
-            <p className="py-8 text-center text-[14px] text-ink-muted">No notifications yet.</p>
-          ) : notif.items.map((n) => (
-            <button key={n.id}
-              onClick={() => { setNotifOpen(false); if (n.group_id) nav(`/group/${n.group_id}`); }}
-              className="tap flex w-full items-start gap-3 rounded-xl bg-card px-3.5 py-3 text-left shadow-card">
-              <div className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-brand-wash text-brand">
-                <Bell className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[13.5px] text-ink">{n.body}</p>
-                <p className="text-[11px] text-ink-muted">{new Date(n.created_at).toLocaleString()}</p>
-              </div>
-            </button>
-          ))}
-        </div>
+        {notif.general.length === 0 ? (
+          <p className="py-8 text-center text-[14px] text-ink-muted">No notifications yet.</p>
+        ) : (
+          <>
+            {/* ~5 visible, rest scrolls; "Expand" opens the full-screen list */}
+            <div className="max-h-[20rem] space-y-2 overflow-y-auto">
+              {notif.general.slice(0, 20).map((n) => (
+                <button key={n.id}
+                  onClick={() => { setNotifOpen(false); if (n.group_id) nav(`/group/${n.group_id}`); }}
+                  className="tap flex w-full items-start gap-3 rounded-xl bg-card px-3.5 py-3 text-left shadow-card">
+                  <div className="mt-0.5 flex h-8 w-8 flex-none items-center justify-center rounded-lg bg-brand-wash text-brand">
+                    <Bell className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13.5px] text-ink">{n.body}</p>
+                    <p className="text-[11px] text-ink-muted">{new Date(n.created_at).toLocaleString()}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <Button full variant="soft" className="mt-3" onClick={() => { setNotifOpen(false); nav('/notifications'); }}>
+              <Maximize2 className="h-4 w-4" /> See all notifications
+            </Button>
+          </>
+        )}
       </Sheet>
     </AppShell>
   );
