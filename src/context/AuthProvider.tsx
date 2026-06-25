@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { supabase, isConfigured } from '@/lib/supabase';
 import { db } from '@/data/db';
 import { DEMO_ME_ID } from '@/data/demoData';
@@ -33,19 +34,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!active) return;
-      if (data.session?.user) await loadProfile(data.session.user.id);
-      setLoading(false);
-    });
+    // Safety net: never let the branded splash hang forever. If session/profile
+    // resolution stalls (flaky network on resume, etc.), drop the splash anyway —
+    // onAuthStateChange will fill in the user once it recovers.
+    const failsafe = setTimeout(() => { if (active) setLoading(false); }, 5000);
+
+    (async () => {
+      try {
+        const { data } = await supabase!.auth.getSession();
+        if (active && data.session?.user) await loadProfile(data.session.user.id);
+      } catch { /* ignore — failsafe + onAuthStateChange recover */ }
+      finally { if (active) { clearTimeout(failsafe); setLoading(false); } }
+    })();
+
     const { data: sub } = supabase.auth.onAuthStateChange(async (_e, session) => {
       if (session?.user) await loadProfile(session.user.id);
       else setUser(null);
     });
     return () => {
       active = false;
+      clearTimeout(failsafe);
       sub.subscription.unsubscribe();
     };
+  }, []);
+
+  // Native: pause token auto-refresh while backgrounded, and on resume restart it
+  // and re-check the session. Prevents stale-token / stalled-refresh states that
+  // used to leave the app hanging when reopened after a long time in the background.
+  useEffect(() => {
+    if (!isConfigured || !supabase || !Capacitor.isNativePlatform()) return;
+    let remove: (() => void) | undefined;
+    (async () => {
+      const { App } = await import('@capacitor/app');
+      const handle = await App.addListener('appStateChange', ({ isActive }) => {
+        if (!supabase) return;
+        if (isActive) {
+          supabase.auth.startAutoRefresh();
+          supabase.auth.getSession()
+            .then(({ data }) => { if (data.session?.user) loadProfile(data.session.user.id); })
+            .catch(() => {});
+        } else {
+          supabase.auth.stopAutoRefresh();
+        }
+      });
+      remove = () => handle.remove();
+    })();
+    return () => { remove?.(); };
   }, []);
 
   const signIn: AuthState['signIn'] = async (email, password) => {

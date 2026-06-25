@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthProvider';
 import { usePush } from '@/hooks/usePush';
@@ -6,6 +6,7 @@ import { BottomNav } from '@/components/layout/BottomNav';
 import { AddFab } from '@/components/layout/AddFab';
 import { EidosyneWordmark } from '@/components/layout/EidosyneLogo';
 import { Spinner } from '@/components/ui';
+import Onboarding from '@/components/Onboarding';
 import Auth from '@/screens/Auth';
 import Dashboard from '@/screens/Dashboard';
 import Groups from '@/screens/Groups';
@@ -19,10 +20,21 @@ import Notifications from '@/screens/Notifications';
 import AddExpense from '@/screens/AddExpense';
 import Profile from '@/screens/Profile';
 
+const ONBOARD_KEY = 'splitr_onboarded_v1';
+
 export default function App() {
   const { user, loading } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // First-run guide: shown once per device (cleared on uninstall). Skippable.
+  const [showOnboarding, setShowOnboarding] = useState(() => {
+    try { return !localStorage.getItem(ONBOARD_KEY); } catch { return false; }
+  });
+  const dismissOnboarding = useCallback(() => {
+    try { localStorage.setItem(ONBOARD_KEY, '1'); } catch { /* ignore */ }
+    setShowOnboarding(false);
+  }, []);
 
   // register for background push when logged in; tapping a push opens the group
   const openGroup = useCallback((groupId: string) => navigate(`/group/${groupId}`), [navigate]);
@@ -65,6 +77,7 @@ export default function App() {
       </Routes>
       {!fullScreen && <AddFab />}
       {!fullScreen && <BottomNav />}
+      {showOnboarding && <Onboarding onDone={dismissOnboarding} />}
     </>
   );
 }
