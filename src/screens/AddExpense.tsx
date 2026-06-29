@@ -308,6 +308,18 @@ export default function AddExpense() {
                 />
               </div>
 
+              {/* Tell the user WHY Save is disabled instead of leaving a dead button */}
+              {!canSave && !busy && (
+                <p className="text-[13px] text-ink-muted">
+                  {totalCents <= 0 ? 'Enter an amount.'
+                    : !description.trim() ? 'Add a short description.'
+                    : activeParticipants.length === 0 ? 'Pick at least one person to split with.'
+                    : !multiPayerValid ? 'The amounts each person paid must add up to the total.'
+                    : split.message ? split.message
+                    : !split.valid ? 'Check the split — the shares don’t add up to the total yet.'
+                    : ''}
+                </p>
+              )}
               {saveError && <p className="text-[13px] text-owe">{saveError}</p>}
               <Button full onClick={save} disabled={!canSave}>{busy ? 'Saving…' : 'Save expense'}</Button>
             </>

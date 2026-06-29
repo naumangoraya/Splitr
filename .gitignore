@@ -30,3 +30,8 @@ android/app/google-services.json
 
 # graphify knowledge graph (local analysis cache)
 graphify-out/
+
+# Android release signing — NEVER commit these (keystore + passwords)
+android/key.properties
+android/*.keystore
+*.jks

@@ -6,6 +6,7 @@ import { BottomNav } from '@/components/layout/BottomNav';
 import { AddFab } from '@/components/layout/AddFab';
 import { EidosyneWordmark } from '@/components/layout/EidosyneLogo';
 import { Spinner } from '@/components/ui';
+import ErrorBoundary from '@/components/ErrorBoundary';
 import Onboarding from '@/components/Onboarding';
 import Auth from '@/screens/Auth';
 import Dashboard from '@/screens/Dashboard';
@@ -55,11 +56,10 @@ export default function App() {
   // Full-screen routes (no bottom nav / FAB)
   const fullScreen = location.pathname.startsWith('/add')
     || location.pathname.startsWith('/group/')
-    || location.pathname === '/chats'
     || location.pathname === '/notifications';
 
   return (
-    <>
+    <ErrorBoundary>
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/groups" element={<Groups />} />
@@ -78,6 +78,6 @@ export default function App() {
       {!fullScreen && <AddFab />}
       {!fullScreen && <BottomNav />}
       {showOnboarding && <Onboarding onDone={dismissOnboarding} />}
-    </>
+    </ErrorBoundary>
   );
 }

@@ -114,7 +114,7 @@ export interface Db {
   listPendingSettlements(meId: string): Promise<PendingSettlement[]>;
   listComments(expenseId: string): Promise<Comment[]>;
   addComment(expenseId: string, userId: string, body: string): Promise<void>;
-  listActivityDetailed(meId: string): Promise<ActivityItem[]>;
+  listActivityDetailed(meId: string, before?: string): Promise<ActivityItem[]>;
   inviteToGroup(groupId: string, email: string, invitedBy: string): Promise<InviteResult>;
   addFriendByEmail(meId: string, email: string): Promise<string>;
   // membership management
@@ -412,13 +412,13 @@ const demoDb: Db = {
   async addComment(expenseId, userId, body) {
     mem.comments.push({ id: uid(), expense_id: expenseId, user_id: userId, body, created_at: new Date().toISOString() });
   },
-  async listActivityDetailed(meId) {
+  async listActivityDetailed(meId, before) {
     const myGroupIds = new Set(
       mem.groups.filter((g) => (mem.members[g.id] ?? []).includes(meId)).map((g) => g.id)
     );
     const nameOf = (id: string | null) => (id ? (mem.profiles.find((p) => p.id === id)?.full_name ?? '—') : '—');
     return mem.activity
-      .filter((a) => a.group_id && myGroupIds.has(a.group_id))
+      .filter((a) => a.group_id && myGroupIds.has(a.group_id) && (!before || a.created_at < before))
       .slice(0, 100)
       .map((a) => {
         const g = mem.groups.find((x) => x.id === a.group_id);
@@ -650,22 +650,48 @@ function rowToExpense(r: any): Expense {
   };
 }
 
-// one bundle fetch → both the user's net and the group's last-activity time
-async function supaSummary(meId: string, group: Group): Promise<GroupSummary> {
-  const bundle = await supaDb.getGroup(group.id);
-  let net = 0;
-  let lastActivityAt = group.created_at;
-  for (const e of bundle.expenses) {
-    net += expenseNet(e).get(meId) ?? 0; // active-split aware
-    if (e.created_at > lastActivityAt) lastActivityAt = e.created_at;
+// Summaries for many groups in TWO batched queries (expenses + settlements via
+// `in(group_id, …)`) instead of one full getGroup() bundle per group. Same
+// per-group net math as before; just no N+1 round-trips. Sorted newest-first.
+async function supaSummaries(meId: string, groups: Group[]): Promise<GroupSummary[]> {
+  if (groups.length === 0) return [];
+  const client = sb();
+  const ids = groups.map((g) => g.id);
+  const [{ data: exp, error: e1 }, { data: setts, error: e2 }] = await Promise.all([
+    client.from('expenses').select(EXPENSE_SELECT).in('group_id', ids).is('deleted_at', null),
+    client.from('settlements').select('*').in('group_id', ids)
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+
+  const expByGroup = new Map<string, Expense[]>();
+  for (const r of exp ?? []) {
+    const e = rowToExpense(r);
+    const arr = expByGroup.get(e.group_id);
+    if (arr) arr.push(e); else expByGroup.set(e.group_id, [e]);
   }
-  for (const s of bundle.settlements) {
-    if (s.created_at > lastActivityAt) lastActivityAt = s.created_at;
-    if (s.status !== 'confirmed') continue;
-    if (s.from_user === meId) net += s.amount_cents;
-    if (s.to_user === meId) net -= s.amount_cents;
+  const settByGroup = new Map<string, Settlement[]>();
+  for (const r of setts ?? []) {
+    const s = { ...(r as any), amount_cents: Number((r as any).amount_cents) } as Settlement;
+    const arr = settByGroup.get(s.group_id);
+    if (arr) arr.push(s); else settByGroup.set(s.group_id, [s]);
   }
-  return { group, netCents: net, lastActivityAt };
+
+  return groups.map((group) => {
+    let net = 0;
+    let lastActivityAt = group.created_at;
+    for (const e of expByGroup.get(group.id) ?? []) {
+      net += expenseNet(e).get(meId) ?? 0; // active-split aware
+      if (e.created_at > lastActivityAt) lastActivityAt = e.created_at;
+    }
+    for (const s of settByGroup.get(group.id) ?? []) {
+      if (s.created_at > lastActivityAt) lastActivityAt = s.created_at;
+      if (s.status !== 'confirmed') continue;
+      if (s.from_user === meId) net += s.amount_cents;
+      if (s.to_user === meId) net -= s.amount_cents;
+    }
+    return { group, netCents: net, lastActivityAt };
+  }).sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
 }
 
 const supaDb: Db = {
@@ -685,8 +711,7 @@ const supaDb: Db = {
     const groups = (memberships ?? [])
       .map((m: any) => m.groups as Group)
       .filter((g) => g && !g.is_direct);
-    const summaries = await Promise.all(groups.map((group) => supaSummary(meId, group)));
-    return summaries.sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
+    return supaSummaries(meId, groups);
   },
   async getGroup(groupId) {
     const client = sb();
@@ -719,8 +744,7 @@ const supaDb: Db = {
       .from('group_members').select('group_id, groups(*)').eq('user_id', meId);
     if (error) throw error;
     const groups = (data ?? []).map((m: any) => m.groups as Group).filter((g) => g && g.is_direct);
-    const summaries = await Promise.all(groups.map((group) => supaSummary(meId, group)));
-    return summaries.sort((a, b) => b.lastActivityAt.localeCompare(a.lastActivityAt));
+    return supaSummaries(meId, groups);
   },
   async listFriends(meId) {
     const client = sb();
@@ -753,24 +777,58 @@ const supaDb: Db = {
       .from('group_members').select('group_id, groups(*)').eq('user_id', meId);
     if (error) throw error;
     const groups = (memberships ?? []).map((m: any) => m.groups as Group).filter(Boolean);
-    const bundles = await Promise.all(groups.map((g) => supaDb.getGroup(g.id)));
+    if (groups.length === 0) return [];
+
+    // Batch all groups' expenses + settlements + members in 3 queries (was one
+    // getGroup() per group). Same pairwise net math, no N+1 round-trips.
+    const ids = groups.map((g) => g.id);
+    const [{ data: exp, error: e1 }, { data: setts, error: e2 }, { data: gm, error: e3 }] = await Promise.all([
+      client.from('expenses').select(EXPENSE_SELECT).in('group_id', ids).is('deleted_at', null),
+      client.from('settlements').select('*').in('group_id', ids),
+      client.from('group_members').select('group_id, role, profiles(*)').in('group_id', ids)
+    ]);
+    if (e1) throw e1;
+    if (e2) throw e2;
+    if (e3) throw e3;
+    const expByGroup = new Map<string, Expense[]>();
+    for (const r of exp ?? []) {
+      const e = rowToExpense(r);
+      const arr = expByGroup.get(e.group_id);
+      if (arr) arr.push(e); else expByGroup.set(e.group_id, [e]);
+    }
+    const settByGroup = new Map<string, Settlement[]>();
+    for (const r of setts ?? []) {
+      const s = { ...(r as any), amount_cents: Number((r as any).amount_cents) } as Settlement;
+      const arr = settByGroup.get(s.group_id);
+      if (arr) arr.push(s); else settByGroup.set(s.group_id, [s]);
+    }
+    const membersByGroup = new Map<string, Member[]>();
+    for (const r of gm ?? []) {
+      const m = { ...((r as any).profiles as Profile), role: (r as any).role } as Member;
+      const gid = (r as any).group_id as string;
+      const arr = membersByGroup.get(gid);
+      if (arr) arr.push(m); else membersByGroup.set(gid, [m]);
+    }
+
     const byPerson = new Map<string, PersonBalance>();
-    for (const bundle of bundles) {
-      const edges = pairwiseEdges(bundle.expenses, bundle.settlements); // skips settled
+    for (const group of groups) {
+      const expenses = expByGroup.get(group.id) ?? [];
+      const settlements = settByGroup.get(group.id) ?? [];
+      const edges = pairwiseEdges(expenses, settlements); // skips settled
       // a person counts as "shared" if there's any expense/settlement involving both of us
       const sharedWith = new Set<string>();
-      for (const e of bundle.expenses) {
+      for (const e of expenses) {
         for (const p of (e.payments && e.payments.length > 0 ? e.payments : [{ user_id: e.paid_by }])) sharedWith.add(p.user_id);
         for (const s of e.splits) sharedWith.add(s.user_id);
       }
-      for (const s of bundle.settlements) { sharedWith.add(s.from_user); sharedWith.add(s.to_user); }
-      for (const other of bundle.members) {
+      for (const s of settlements) { sharedWith.add(s.from_user); sharedWith.add(s.to_user); }
+      for (const other of (membersByGroup.get(group.id) ?? [])) {
         if (other.id === meId || !sharedWith.has(other.id)) continue;
         const net = pairwiseNetBetween(edges, meId, other.id);
         const entry = byPerson.get(other.id)
           ?? { person: other as Profile, totalNetCents: 0, breakdown: [] };
         entry.totalNetCents += net;
-        if (net !== 0) entry.breakdown.push({ group: bundle.group, netCents: net });
+        if (net !== 0) entry.breakdown.push({ group, netCents: net });
         byPerson.set(other.id, entry);
       }
     }
@@ -946,15 +1004,18 @@ const supaDb: Db = {
     const { error } = await sb().from('comments').insert({ expense_id: expenseId, user_id: userId, body });
     if (error) throw error;
   },
-  async listActivityDetailed(meId) {
+  async listActivityDetailed(meId, before) {
     const client = sb();
     // when I joined each group → I only see activity from then on
     const { data: mems } = await client.from('group_members')
       .select('group_id, joined_at').eq('user_id', meId);
     const joinedAt = new Map<string, string>((mems ?? []).map((m: any) => [m.group_id, m.joined_at]));
-    // RLS already limits activity rows to groups I belong to.
-    const { data, error } = await client.from('activity')
+    // RLS already limits activity rows to groups I belong to. `before` is a
+    // created_at cursor for "load more" (rows strictly older than the last seen).
+    let q = client.from('activity')
       .select('*').order('created_at', { ascending: false }).limit(200);
+    if (before) q = q.lt('created_at', before);
+    const { data, error } = await q;
     if (error) throw error;
     const rows = ((data ?? []) as Activity[]).filter((a) => {
       const j = a.group_id ? joinedAt.get(a.group_id) : undefined;

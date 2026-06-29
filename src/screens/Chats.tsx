@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthProvider';
 import { useAsync } from '@/hooks/useAsync';
 import { db } from '@/data/db';
-import { AppShell } from '@/components/layout/AppShell';
+import { AppShell, Header } from '@/components/layout/AppShell';
 import { Avatar, Spinner, ErrorState, EmptyState, Button, Input } from '@/components/ui';
 import type { ChatPerson, Conversation } from '@/types';
-import { ChevronLeft, Search, UserRound, Users } from 'lucide-react';
+import { Search, UserRound, Users } from 'lucide-react';
 
 export default function Chats() {
   const { user } = useAuth();
@@ -40,14 +40,7 @@ export default function Chats() {
   }
 
   return (
-    <AppShell
-      header={
-        <header className="sticky top-0 z-30 flex items-center gap-2 border-b border-line bg-canvas/90 px-3 py-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur">
-          <button className="tap flex h-11 w-11 flex-none items-center justify-center rounded-xl -ml-1" onClick={() => nav(-1)} aria-label="Back"><ChevronLeft className="h-6 w-6 text-ink-soft" /></button>
-          <h1 className="flex-1 font-display text-[18px] font-bold text-ink">Chats</h1>
-        </header>
-      }
-    >
+    <AppShell header={<Header title="Chats" />}>
       {loading ? (
         <Spinner />
       ) : error ? (

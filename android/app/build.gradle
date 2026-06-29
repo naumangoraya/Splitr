@@ -1,5 +1,16 @@
 apply plugin: 'com.android.application'
 
+// Release signing. The keystore + passwords live in android/key.properties
+// (gitignored) and never in the repo. When that file is absent — e.g. a fresh
+// clone, a contributor's machine, or a plain debug build — signing is simply
+// skipped so the project still builds. CI writes key.properties from secrets.
+def keystorePropertiesFile = rootProject.file("key.properties")
+def keystoreProperties = new Properties()
+def hasKeystore = keystorePropertiesFile.exists()
+if (hasKeystore) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 android {
     namespace = "com.splitr.app"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,8 +27,25 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            if (hasKeystore) {
+                storeFile rootProject.file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
     buildTypes {
         release {
+            // Sign the release only when the keystore is configured; otherwise an
+            // unsigned release is produced (debug builds are unaffected).
+            if (hasKeystore) {
+                signingConfig signingConfigs.release
+            }
+            // Minification is intentionally OFF: R8 can strip classes a Capacitor
+            // WebView app needs and crash the release. Not required by Play Store.
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

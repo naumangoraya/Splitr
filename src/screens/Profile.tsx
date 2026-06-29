@@ -8,6 +8,10 @@ import { LogOut, Check } from 'lucide-react';
 
 const CURRENCIES = ['PKR', 'USD', 'GBP', 'EUR', 'AED', 'SAR', 'INR'];
 
+// Public privacy policy (also used as the Play Store listing URL). Update if you
+// host it elsewhere (e.g. GitHub Pages).
+const PRIVACY_URL = 'https://github.com/naumangoraya/Splitr/blob/main/PRIVACY.md';
+
 export default function Profile() {
   const { user, signOut, refresh, configured } = useAuth();
   const me = user!;
@@ -74,6 +78,11 @@ export default function Profile() {
         <Button variant="ghost" full className="mt-6 text-owe" onClick={signOut}>
           <LogOut className="h-4 w-4" /> Sign out
         </Button>
+
+        <a href={PRIVACY_URL} target="_blank" rel="noreferrer"
+          className="tap mt-4 block text-center text-[13px] font-medium text-ink-muted underline">
+          Privacy Policy
+        </a>
 
         <PoweredByEidosyne className="mt-8" />
       </div>

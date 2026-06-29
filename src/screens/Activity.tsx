@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/context/AuthProvider';
 import { useAsync } from '@/hooks/useAsync';
@@ -12,7 +12,35 @@ export default function Activity() {
   const { user } = useAuth();
   const me = user!;
   const nav = useNavigate();
-  const { data, loading, error, reload } = useAsync(() => db.listActivityDetailed(me.id), [me.id]);
+  // Paged activity feed: load 100, "Load more" fetches older rows via a cursor.
+  type ActivityRow = Awaited<ReturnType<typeof db.listActivityDetailed>>[number];
+  const PAGE = 100;
+  const [data, setData] = useState<ActivityRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [hasMore, setHasMore] = useState(false);
+  const [more, setMore] = useState(false);
+  const loading = data === null && error === null;
+
+  const reload = useCallback(async () => {
+    try {
+      const page = await db.listActivityDetailed(me.id);
+      setError(null); setHasMore(page.length >= PAGE); setData(page);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not load activity'); }
+  }, [me.id]);
+
+  const loadMore = useCallback(async () => {
+    if (!data || data.length === 0 || more) return;
+    setMore(true);
+    try {
+      const page = await db.listActivityDetailed(me.id, data[data.length - 1].createdAt);
+      setHasMore(page.length >= PAGE);
+      setData((cur) => [...(cur ?? []), ...page]);
+    } catch (e) { setError(e instanceof Error ? e.message : 'Could not load more'); }
+    finally { setMore(false); }
+  }, [me.id, data, more]);
+
+  useEffect(() => { reload(); }, [reload]);
+
   const pending = useAsync(() => db.listPendingSettlements(me.id), [me.id]);
   const [pErr, setPErr] = useState<string | null>(null);
   const [pBusy, setPBusy] = useState<string | null>(null);
@@ -206,6 +234,11 @@ export default function Activity() {
             );
           })}
           </div>
+          {hasMore && (
+            <Button full variant="soft" onClick={loadMore} disabled={more}>
+              {more ? 'Loading…' : 'Load more'}
+            </Button>
+          )}
         </div>
       )}
     </AppShell>
