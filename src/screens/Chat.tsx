@@ -26,6 +26,7 @@ export default function Chat() {
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionId, setMentionId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToEnd = useCallback(() => { endRef.current?.scrollIntoView({ block: 'nearest' }); }, []);
 
@@ -77,6 +78,9 @@ export default function Chat() {
       setError(e instanceof Error ? e.message : 'Could not send');
     } finally {
       setSending(false);
+      // Keep the keyboard up after sending. Without this the input loses focus,
+      // the keyboard closes, --app-height grows back and the layout jumps.
+      textareaRef.current?.focus();
     }
   }
 
@@ -154,17 +158,18 @@ export default function Chat() {
               </div>
             )}
             <div className="flex items-end gap-2">
-              <button onClick={() => setMentionOpen(true)} disabled={mentions.length === 0}
+              <button onClick={() => setMentionOpen(true)} onMouseDown={(e) => e.preventDefault()} disabled={mentions.length === 0}
                 className="tap flex h-11 w-11 flex-none items-center justify-center rounded-xl text-ink-muted disabled:opacity-30" aria-label="Mention a transaction">
                 <Paperclip className="h-5 w-5" />
               </button>
               <textarea
+                ref={textareaRef}
                 value={text} onChange={(e) => setText(e.target.value)} rows={1} placeholder="Message…"
                 onFocus={() => setTimeout(scrollToEnd, 250)}
                 onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
                 className="max-h-28 min-h-[44px] flex-1 resize-none rounded-2xl border border-line bg-white px-3.5 py-2.5 text-[15px] text-ink outline-none focus:border-brand"
               />
-              <button onClick={send} disabled={sending || (!text.trim() && !mentionId)}
+              <button onClick={send} onMouseDown={(e) => e.preventDefault()} disabled={sending || (!text.trim() && !mentionId)}
                 className="tap flex h-11 w-11 flex-none items-center justify-center rounded-full bg-brand text-white disabled:opacity-40" aria-label="Send">
                 <Send className="h-5 w-5" />
               </button>

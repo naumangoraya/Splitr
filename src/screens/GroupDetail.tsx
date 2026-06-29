@@ -138,7 +138,7 @@ export default function GroupDetail() {
           <div className="min-w-0 flex-1">
             <p className="text-[12.5px] font-medium text-ink-muted">Your balance in this group</p>
             <p className={`font-display text-[20px] font-bold ${myNetCents > 0 ? 'text-owed' : myNetCents < 0 ? 'text-owe' : 'text-ink'}`}>
-              {myNetCents === 0 ? 'All settled up' : myNetCents > 0 ? `You’re owed ${fromCents(myNetCents, currency)}` : `You owe ${fromCents(-myNetCents, currency)}`}
+              {myNetCents === 0 ? 'Settled up' : myNetCents > 0 ? `You'll get ${fromCents(myNetCents, currency)}` : `You'll pay ${fromCents(-myNetCents, currency)}`}
             </p>
             <p className="mt-0.5 text-[12px] text-ink-muted">
               {transfers.length === 0 ? 'Nothing to settle' : `${transfers.length} ${transfers.length === 1 ? 'transfer' : 'transfers'} · tap to view & settle`}

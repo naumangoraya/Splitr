@@ -165,7 +165,7 @@ export default function Activity() {
                       <p className={`tabular text-[14px] font-semibold ${myDeltaCents > 0 ? 'text-owed' : 'text-owe'}`}>
                         {myDeltaCents > 0 ? '+' : '-'}{fromCents(Math.abs(myDeltaCents), me.preferred_currency)}
                       </p>
-                      <p className="text-[11px] text-ink-muted">{myDeltaCents > 0 ? 'you get back' : 'you owe'}</p>
+                      <p className="text-[11px] text-ink-muted">{myDeltaCents > 0 ? "you'll get" : "you'll pay"}</p>
                     </div>
                   )}
                   {isSettlement && a.amountCents > 0 && (
@@ -187,7 +187,7 @@ export default function Activity() {
                       tree.map((t, i) => (
                         <div key={i} className="flex items-center justify-between py-1.5">
                           <span className="text-[13.5px] text-ink-soft">
-                            {t.owesMe ? <><b>{t.name}</b> owes you</> : <>you owe <b>{t.name}</b></>}
+                            {t.owesMe ? <><b>{t.name}</b> pays you</> : <>you'll pay <b>{t.name}</b></>}
                           </span>
                           <span className={`tabular text-[13.5px] font-semibold ${t.owesMe ? 'text-owed' : 'text-owe'}`}>
                             {fromCents(t.cents, me.preferred_currency)}

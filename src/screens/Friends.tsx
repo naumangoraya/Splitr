@@ -104,7 +104,7 @@ export default function Friends() {
                           <div className="min-w-0 flex-1">
                             <p className="truncate font-semibold text-ink">{pb.person.full_name || pb.person.email}</p>
                             <p className="text-[13px] text-ink-muted">
-                              {net > 0 ? 'owes you in total' : net < 0 ? 'you owe in total' : 'all settled'}
+                              {net > 0 ? "You'll get" : net < 0 ? "You'll pay" : 'Settled'}
                               {pb.breakdown.length > 1 ? ` · ${pb.breakdown.length} groups` : ''}
                             </p>
                           </div>
@@ -155,7 +155,7 @@ export default function Friends() {
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold text-ink">{group.name}</p>
                         <p className="text-[13px] text-ink-muted">
-                          {netCents > 0 ? 'owes you' : netCents < 0 ? 'you owe' : 'all settled'}
+                          {netCents > 0 ? "You'll get" : netCents < 0 ? "You'll pay" : 'Settled'}
                         </p>
                       </div>
                       <p className={`tabular text-[15px] font-semibold ${netCents > 0 ? 'text-owed' : netCents < 0 ? 'text-owe' : 'text-ink-muted'}`}>

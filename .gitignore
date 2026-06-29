@@ -27,3 +27,6 @@ supabase/_*.sql
 # Firebase config (injected via CI secret / added locally)
 google-services.json
 android/app/google-services.json
+
+# graphify knowledge graph (local analysis cache)
+graphify-out/

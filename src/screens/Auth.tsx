@@ -104,7 +104,7 @@ export default function Auth() {
             </div>
           )}
         </div>
-        <p className="mt-6 text-center text-[12px] text-white/40">Amounts in PKR · your data stays in your Supabase project</p>
+        <p className="mt-6 text-center text-[12px] text-white/40">Amounts in PKR</p>
       </div>
     </div>
   );

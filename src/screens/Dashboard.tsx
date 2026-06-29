@@ -7,6 +7,7 @@ import { db } from '@/data/db';
 import { AppShell, Header } from '@/components/layout/AppShell';
 import { Avatar, Spinner, ErrorState, EmptyState, Button, Sheet } from '@/components/ui';
 import { fromCents } from '@/lib/money';
+import { netLabel } from '@/lib/balanceText';
 import { Plus, ChevronRight, Bell, MessageCircle, Maximize2 } from 'lucide-react';
 
 export default function Dashboard() {
@@ -61,11 +62,11 @@ export default function Dashboard() {
         <div className="px-5 py-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="rounded-2xl bg-owed-wash p-4">
-              <p className="text-[12.5px] font-medium text-owed">You are owed</p>
+              <p className="text-[12.5px] font-medium text-owed">You'll get</p>
               <p className="tabular mt-1 font-display text-[22px] font-bold text-owed">{fromCents(owed, me.preferred_currency)}</p>
             </div>
             <div className="rounded-2xl bg-owe-wash p-4">
-              <p className="text-[12.5px] font-medium text-owe">You owe</p>
+              <p className="text-[12.5px] font-medium text-owe">You'll pay</p>
               <p className="tabular mt-1 font-display text-[22px] font-bold text-owe">{fromCents(owe, me.preferred_currency)}</p>
             </div>
           </div>
@@ -84,7 +85,7 @@ export default function Dashboard() {
                   <Avatar id={group.id} name={group.name} />
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-semibold text-ink">{group.name}</p>
-                    <p className="text-[13px] text-ink-muted">{netLabel(netCents, me.preferred_currency)}</p>
+                    <p className="text-[13px] text-ink-muted">{netCents === 0 ? 'Settled' : `${netLabel(netCents)} ${fromCents(Math.abs(netCents), me.preferred_currency)}`}</p>
                   </div>
                   <ChevronRight className="h-5 w-5 text-ink-muted" />
                 </button>
@@ -123,7 +124,7 @@ export default function Dashboard() {
                         <p className={`tabular text-[14px] font-semibold ${myDelta > 0 ? 'text-owed' : 'text-owe'}`}>
                           {myDelta > 0 ? '+' : '-'}{fromCents(Math.abs(myDelta), me.preferred_currency)}
                         </p>
-                        <p className="text-[11px] text-ink-muted">{myDelta > 0 ? 'you get back' : 'you owe'}</p>
+                        <p className="text-[11px] text-ink-muted">{myDelta > 0 ? "you'll get" : "you'll pay"}</p>
                       </div>
                     )}
                     {isSettlement && a.amountCents > 0 && (
@@ -169,10 +170,4 @@ export default function Dashboard() {
       </Sheet>
     </AppShell>
   );
-}
-
-function netLabel(net: number, currency: string) {
-  if (net > 0) return `owes you ${fromCents(net, currency)}`;
-  if (net < 0) return `you owe ${fromCents(-net, currency)}`;
-  return 'all settled up';
 }

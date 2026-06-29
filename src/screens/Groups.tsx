@@ -60,9 +60,9 @@ export default function Groups() {
                 </div>
                 <div className="text-right">
                   <p className={`tabular text-[14px] font-semibold ${netCents > 0 ? 'text-owed' : netCents < 0 ? 'text-owe' : 'text-ink-muted'}`}>
-                    {netCents === 0 ? 'settled' : fromCents(Math.abs(netCents), me.preferred_currency)}
+                    {netCents === 0 ? 'Settled' : fromCents(Math.abs(netCents), me.preferred_currency)}
                   </p>
-                  <p className="text-[11px] text-ink-muted">{netCents > 0 ? 'you’re owed' : netCents < 0 ? 'you owe' : ''}</p>
+                  <p className="text-[11px] text-ink-muted">{netCents > 0 ? "You'll get" : netCents < 0 ? "You'll pay" : ''}</p>
                 </div>
                 <ChevronRight className="h-5 w-5 text-ink-muted" />
               </button>

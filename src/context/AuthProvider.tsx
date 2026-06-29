@@ -34,10 +34,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
       return;
     }
-    // Safety net: never let the branded splash hang forever. If session/profile
-    // resolution stalls (flaky network on resume, etc.), drop the splash anyway —
+    // Safety net: never let the branded splash hang forever. The session now
+    // reads from fast native storage, so resolution is quick; if it ever stalls
+    // (flaky network on resume), drop the splash anyway after a short wait —
     // onAuthStateChange will fill in the user once it recovers.
-    const failsafe = setTimeout(() => { if (active) setLoading(false); }, 5000);
+    const failsafe = setTimeout(() => { if (active) setLoading(false); }, 2000);
 
     (async () => {
       try {
